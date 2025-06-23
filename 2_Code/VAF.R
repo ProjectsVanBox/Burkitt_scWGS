@@ -14,7 +14,7 @@ library(tidyverse)
 
 # Set filepath
 
-setwd("~/surfdrive/Shared/pmc_vanboxtel/projects/Lymphoma_scWGS/3_Output/Burkitt_scWGS/Figures_supp/")
+setwd("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/")
 
 # Set date
 
@@ -28,9 +28,9 @@ source('~/hpc/pmc_vanboxtel/projects/CHemALL/2_Code/theme_CHemALL.R')
 
 # Load metadata
 
-below_curve_df <-  read.csv("../../../1_Input/Burkitt_scWGS/below_curve_samples.csv")
-bad_baf_df <-  read.csv("../../../1_Input/Burkitt_scWGS/bad_baf_samples.csv")
-input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Lymphoma_scWGS/1_Input/Burkitt_scWGS/Sample_overview.xlsx')
+below_curve_df <-  read.csv("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/below_curve_samples.csv")
+bad_baf_df <-  read.csv("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/bad_baf_samples.csv")
+input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Sample_overview.xlsx')
 
 # Label input_df with residual info
 
@@ -139,7 +139,7 @@ for (sample_id in unique_samples) {
          y = "Variant Allele Frequency") +
     coord_cartesian(ylim = c(0, 1))  # safer than using ylim()
   
-  ggsave(filename = paste0("VAF_distribution_with_residual_info_", novogene_label, "_", date, ".pdf"),
+  ggsave(filename = paste0("VAF/VAF_distribution_with_residual_info_", novogene_label, "_", date, ".pdf"),
          plot = p1, width = 5, height = 4)
   
   p2 <- ggplot(sample_data, aes(x = Sample_name, y = VAF)) +
@@ -157,7 +157,7 @@ for (sample_id in unique_samples) {
          y = "Variant Allele Frequency") +
     coord_cartesian(ylim = c(0, 1))  # safer than using ylim()
   
-  ggsave(filename = paste0("VAF_distribution_with_BAF_info_", novogene_label, "_", date, ".pdf"),
+  ggsave(filename = paste0("VAF/VAF_distribution_with_BAF_info_", novogene_label, "_", date, ".pdf"),
          plot = p2, width = 5, height = 4)
 }
 
@@ -189,7 +189,7 @@ low_vaf_df <- low_vaf_df %>%
 blacklist_df <- median_df %>%
   filter(BAF == "Bad" | VAF_low == "Yes" | Below_curve == "Yes")
 
-write.csv(blacklist_df, file = "../../../1_Input/Burkitt_scWGS/blacklist_samples.csv", row.names = F)
+write.csv(blacklist_df, file = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/blacklist_samples.csv", row.names = F)
 
 # Percentage removed because of low quality (poor BAF plot + poor callable loci/mean coverage) + low VAF
 
