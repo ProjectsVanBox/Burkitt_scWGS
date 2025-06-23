@@ -1,3 +1,11 @@
+################################################################################
+# Manuscript: Clonal Evolution of Paediatric Burkitt Lymphoma Through Time and Space
+# Description: Script to look at callable loci, coverage and BAF quality of single cell WGS samples 
+# Written by: Alexander Steemers
+# Date: June 2025
+# Modified: 
+################################################################################
+
 # Load libraries
 
 library(ggplot2)
