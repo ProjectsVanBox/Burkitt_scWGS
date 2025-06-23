@@ -1,3 +1,11 @@
+################################################################################
+# Manuscript: Clonal Evolution of Paediatric Burkitt Lymphoma Through Time and Space
+# Description: Script to look at VAF distributions of single cell WGS samples
+# Written by: Alexander Steemers
+# Date: June 2025
+# Modified: 
+################################################################################
+
 # Load libraries
 
 library(VariantAnnotation)
@@ -121,11 +129,11 @@ for (sample_id in unique_samples) {
     pull(Sample_name)
   
   sample_data$Sample_name <- factor(sample_data$Sample_name, levels = ordered_samples)
-  
   sample_median$Sample_num <- match(sample_median$Sample_name, levels(sample_data$Sample_name))
   
+  # -------- p1: Normal plot -------- #
   p1 <- ggplot(sample_data, aes(x = Sample_name, y = VAF)) +
-    geom_violin(aes(fill = ResidualColor), trim = TRUE, color = "black") +
+    geom_violin(trim = TRUE, color = "black") +
     geom_segment(data = sample_median,
                  aes(x = Sample_num - 0.4, xend = Sample_num + 0.3,
                      y = Median, yend = Median),
@@ -137,28 +145,56 @@ for (sample_id in unique_samples) {
     labs(title = paste("VAF Distribution for", novogene_label),
          x = "Sample",
          y = "Variant Allele Frequency") +
-    coord_cartesian(ylim = c(0, 1))  # safer than using ylim()
+    coord_cartesian(ylim = c(0, 1)) 
   
-  ggsave(filename = paste0("VAF/VAF_distribution_with_residual_info_", novogene_label, "_", date, ".pdf"),
+  ggsave(filename = paste0("VAF/VAF_distribution_", novogene_label, "_", date, ".pdf"),
          plot = p1, width = 5, height = 4)
   
-  p2 <- ggplot(sample_data, aes(x = Sample_name, y = VAF)) +
-    geom_violin(aes(fill = BafColor), trim = TRUE, color = "black") +
+  # -------- p2: Residual Color Plot -------- #
+  sample_data$ResidualStatus <- ifelse(sample_data$Below_curve == "Yes", "Below curve", "Pass")
+  residual_colors <- c("Below curve" = "lightblue", "Pass" = "lightgrey")
+  
+  p2 <- ggplot(sample_data, aes(x = Sample_name, y = VAF, fill = ResidualStatus)) +
+    geom_violin(trim = TRUE, color = "black") +
     geom_segment(data = sample_median,
                  aes(x = Sample_num - 0.4, xend = Sample_num + 0.3,
                      y = Median, yend = Median),
                  inherit.aes = FALSE, color = "black", linewidth = 0.6) +
     geom_hline(yintercept = 0.4, linetype = "dashed", color = "red") +
-    scale_fill_identity() +
+    scale_fill_manual(values = residual_colors) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     labs(title = paste("VAF Distribution for", novogene_label),
          x = "Sample",
-         y = "Variant Allele Frequency") +
-    coord_cartesian(ylim = c(0, 1))  # safer than using ylim()
+         y = "Variant Allele Frequency",
+         fill = "Residual status") +
+    coord_cartesian(ylim = c(0, 1))  
+  
+  ggsave(filename = paste0("VAF/VAF_distribution_with_residual_info_", novogene_label, "_", date, ".pdf"),
+         plot = p2, width = 5, height = 4)
+  
+  # -------- p3: BAF Quality Plot -------- #
+  sample_data$BAF_annot <- factor(sample_data$BAF, levels = c("Bad", "Intermediate", "Good"))
+  baf_colors <- c("Bad" = "lightgrey", "Intermediate" = "lightblue", "Good" = "deepskyblue4")
+  
+  p3 <- ggplot(sample_data, aes(x = Sample_name, y = VAF, fill = BAF_annot)) +
+    geom_violin(trim = TRUE, color = "black") +
+    geom_segment(data = sample_median,
+                 aes(x = Sample_num - 0.4, xend = Sample_num + 0.3,
+                     y = Median, yend = Median),
+                 inherit.aes = FALSE, color = "black", linewidth = 0.6) +
+    geom_hline(yintercept = 0.4, linetype = "dashed", color = "red") +
+    scale_fill_manual(values = baf_colors) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    labs(title = paste("VAF Distribution for", novogene_label),
+         x = "Sample",
+         y = "Variant Allele Frequency",
+         fill = "BAF quality") +
+    coord_cartesian(ylim = c(0, 1))
   
   ggsave(filename = paste0("VAF/VAF_distribution_with_BAF_info_", novogene_label, "_", date, ".pdf"),
-         plot = p2, width = 5, height = 4)
+         plot = p3, width = 5, height = 4)
 }
 
 # List samples with no VAF=1 variants as these will be probably doublets
@@ -173,7 +209,7 @@ no_vaf1 <- as.character(vaf1_df$Sample_name[vaf1_df$VAF1_count == 0])
 no_vaf1_df <- vaf1_df %>%
   filter((Sample_name %in% no_vaf1))
 
-# Samples with low median VAF
+# Samples with low median VAF (used 0.4 as a cutoff here)
 
 median_df <- median_df %>%
   mutate(VAF_low = if_else(Median < 0.4, "Yes", "No"))
