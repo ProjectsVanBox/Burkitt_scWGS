@@ -7,7 +7,7 @@ library(patchwork)
 
 # Set filepath
 
-setwd("~/surfdrive/Shared/pmc_vanboxtel/projects/Lymphoma_scWGS/3_Output/Burkitt_scWGS/Figures_supp/")
+setwd("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/")
 
 # Set date
 
@@ -21,7 +21,7 @@ qc_colors <- c('grey', '#54BFB7', '#0A9086')
 
 # Load metadata of samples
 
-input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Lymphoma_scWGS/1_Input/Burkitt_scWGS/Sample_overview.xlsx')
+input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Sample_overview.xlsx')
 colnames(input_df)
 input_df_sub <- input_df[,c('Sample_name','Mean_coverage','Callable_fraction','Lymphoma_type', "ResolveDNA_version", "CNV", "BAF")]
 input_df_sc <- input_df_sub[input_df_sub$ResolveDNA_version %in% c("v1", "v2", "v2.0"), ]
@@ -70,7 +70,7 @@ ggplot() +
   theme_CHemALL() +
   scale_fill_manual(values = qc_colors[c(1,3)]) +
   ggtitle('Residual from predicted callable genome fraction')
-#ggsave(paste0("residual_histogram_allsamples_", date, ".pdf"), width = 5, height = 3)
+ggsave(paste0("QC/residual_histogram_allsamples_", date, ".pdf"), width = 5, height = 3)
 
 # Plot original relationship
 
@@ -82,7 +82,7 @@ ggplot(model_df, aes(x = Mean_coverage, y = Callable_fraction)) +
   scale_color_manual(values = qc_colors[c(1,3)]) +
   scale_shape_manual(values = c(0, 1, 2, 3, 4, 5, 6, 7))+
   labs(title = "Identification of low quality samples")
-#ggsave(paste0("correlation_plot_allsamples_", date, ".pdf"), width = 5, height = 3)
+ggsave(paste0("QC/correlation_plot_allsamples_", date, ".pdf"), width = 5, height = 3)
 
 # Print outlier samples
 
@@ -105,7 +105,7 @@ p2 <- ggplot(data = model_df_plot[model_df_plot$BAF != 'to do',], aes(x = BAF, y
   ggtitle('Residual from predicted callable genome fraction')
 
 p1 + p2
-ggsave(paste0("residual_density_perCNV_BAF_group_", date, ".pdf"), width = 7, height = 3)
+ggsave(paste0("QC/residual_density_perCNV_BAF_group_", date, ".pdf"), width = 7, height = 3)
 
 # Intersect between bad BAF and low callable samples
 
@@ -122,5 +122,5 @@ print(perc_removed)
 
 # Export samples that did not pass initial QC 
 
-write.csv(below_curve, file = "../../../1_Input/Burkitt_scWGS/below_curve_samples.csv", row.names = F)
-write.csv(bad_baf_df, file = "../../../1_Input/Burkitt_scWGS/bad_baf_samples.csv", row.names = F)
+write.csv(below_curve, file = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/below_curve_samples.csv", row.names = F)
+write.csv(bad_baf_df, file = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/bad_baf_samples.csv", row.names = F)
