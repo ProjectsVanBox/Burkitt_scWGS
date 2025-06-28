@@ -1,9 +1,8 @@
 ################################################################################
 # Manuscript: Clonal Evolution of Paediatric Burkitt Lymphoma Through Time and Space
 # Description: Script to look at callable loci, coverage and BAF quality of single cell WGS samples 
-# Written by: Alexander Steemers
+# Author: Alexander Steemers
 # Date: June 2025
-# Modified: 
 ################################################################################
 
 # Load libraries
@@ -15,7 +14,7 @@ library(patchwork)
 
 # Set filepath
 
-setwd("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/")
+setwd("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/")
 
 # Set date
 
@@ -69,7 +68,7 @@ below_curve <- subset(model_df, residual < cutoff)
 model_df$MappingQuality <- 'Pass'
 model_df[model_df$Sample_name %in% below_curve$Sample_name,]$MappingQuality <- 'Fail'
 
-#### plot residuals in histogram and set cutoff for low quality samples
+# Plot residuals in histogram and set cutoff for low quality samples
 
 ggplot() +
   geom_histogram(data = model_df, aes(x = residual, fill = MappingQuality),
@@ -78,7 +77,7 @@ ggplot() +
   theme_CHemALL() +
   scale_fill_manual(values = qc_colors[c(1,3)]) +
   ggtitle('Residual from predicted callable genome fraction')
-ggsave(paste0("QC/residual_histogram_allsamples_", date, ".pdf"), width = 5, height = 3)
+ggsave(paste0("Figures/residual_histogram_allsamples_", date, ".pdf"), width = 5, height = 3)
 
 # Plot original relationship
 
@@ -90,7 +89,7 @@ ggplot(model_df, aes(x = Mean_coverage, y = Callable_fraction)) +
   scale_color_manual(values = qc_colors[c(1,3)]) +
   scale_shape_manual(values = c(0, 1, 2, 3, 4, 5, 6, 7))+
   labs(title = "Identification of low quality samples")
-ggsave(paste0("QC/correlation_plot_allsamples_", date, ".pdf"), width = 5, height = 3)
+ggsave(paste0("Figures/correlation_plot_allsamples_", date, ".pdf"), width = 5, height = 3)
 
 # Print outlier samples
 
@@ -113,7 +112,7 @@ p2 <- ggplot(data = model_df_plot[model_df_plot$BAF != 'to do',], aes(x = BAF, y
   ggtitle('Residual from predicted callable genome fraction')
 
 p1 + p2
-ggsave(paste0("QC/residual_density_perCNV_BAF_group_", date, ".pdf"), width = 7, height = 3)
+ggsave(paste0("Figures/residual_density_perCNV_BAF_group_", date, ".pdf"), width = 7, height = 3)
 
 # Intersect between bad BAF and low callable samples
 
@@ -130,5 +129,5 @@ print(perc_removed)
 
 # Export samples that did not pass initial QC 
 
-write.csv(below_curve, file = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/below_curve_samples.csv", row.names = F)
-write.csv(bad_baf_df, file = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/bad_baf_samples.csv", row.names = F)
+write.csv(below_curve, file = "Data/below_curve_samples.csv", row.names = F)
+write.csv(bad_baf_df, file = "Data/bad_baf_samples.csv", row.names = F)
