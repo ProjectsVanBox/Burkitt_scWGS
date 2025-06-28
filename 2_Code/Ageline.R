@@ -1,7 +1,7 @@
 ################################################################################
 # Manuscript: Clonal Evolution of Paediatric Burkitt Lymphoma Through Time and Space
 # Description: Script to plot ageline of single cell WGS samples
-# Written by: Alexander Steemers
+# Author: Alexander Steemers
 # Date: June 2025
 # Modified: 
 ################################################################################
