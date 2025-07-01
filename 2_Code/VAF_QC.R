@@ -15,6 +15,7 @@ library(reshape2)
 library(VariantAnnotation)
 library(readxl)
 library(ggpubr)
+library(readr)
 
 # Set working directory
 
@@ -230,7 +231,7 @@ mad_val <- mad(tvd_df$TVD)
 median_val <- median(tvd_df$TVD)
 
 tvd_df <- tvd_df %>%
-  mutate(Flagged = TVD > (median_val + 2 * mad_val)) # https://www.sciencedirect.com/science/article/pii/S0022103113000668?via%3Dihub
+  mutate(Flagged = TVD > (median_val + 3.5 * mad_val)) # https://www.sciencedirect.com/science/article/pii/S0022103113000668?via%3Dihub
 
 ggplot(tvd_df, aes(x = TVD, y = reorder(samplename, TVD), 
                    fill = Flagged)) +
@@ -242,7 +243,7 @@ ggplot(tvd_df, aes(x = TVD, y = reorder(samplename, TVD),
   theme(text =  element_text(size =  7, color = 'black'),
         axis.text = element_text(size = 5, colour = "black")) +
   ggTextAxisRotate()
-ggsave('Figures/PTA_samples_TVD_ranked_flagged_2mad.pdf', width = 10, height = 3)
+ggsave('Figures/PTA_samples_TVD_ranked_flagged_35mad.pdf', width = 10, height = 3)
 
 # Annotate the other plot with this
 plot_df3b <- merge(input_df_vafs, tvd_df)
@@ -271,10 +272,10 @@ ggplot(data = plot_df3b,
   ggTextAxisRotate() +
   theme(text =  element_text(size =  7, color = 'black'),
         axis.text = element_text(size = 5, colour = "black"))
-ggsave('Figures/PTA_postPTATOvafs_TVD_flagged_2mad.pdf', width = 12, height = 5)
+ggsave('Figures/PTA_postPTATOvafs_TVD_flagged_35mad.pdf', width = 12, height = 5)
 
 # Export these failed VAF samples
 
 fail_df_pta <- unique(plot_df3b[plot_df3b$VAFfilter == 'Fail', c('samplename','Novogene_ID')])
-write_csv(fail_df_pta, 'Data/PTA_samples_failVAFcheck.txt')
+write_csv(fail_df_pta, 'Data/PTA_samples_failVAFcheck_35mad.txt')
 
