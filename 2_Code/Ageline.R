@@ -50,7 +50,7 @@ diagnostic_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_git
 
 below_curve_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/below_curve_samples.csv')
 bad_baf_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/bad_baf_samples.csv')
-fail_vaf_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/VAF/Data/PTA_samples_failVAFcheck.txt')
+fail_vaf_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/VAF/Data/PTA_samples_failVAFcheck_35mad.txt')
 
 # Make blacklist
 
@@ -87,6 +87,8 @@ ggplot(merged_df,
        aes(x = Age_at_sampling_Y,
            y = Nmut_adj,
            colour = Myc_translocation_IGV)) +
+  
+  #geom_point(alpha = 0.6, size = 2) +
   
   geom_jitter(width = 0.4, height = 0.4,
               alpha = 0.6, size = 2) +
