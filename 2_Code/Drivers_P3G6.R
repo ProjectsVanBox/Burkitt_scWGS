@@ -3,7 +3,6 @@
 # Description: Script to plot oncoplot for P3G6
 # Author: Alexander Steemers
 # Date: June 2025
-# Modified: 
 ################################################################################
 
 # Load libraries
