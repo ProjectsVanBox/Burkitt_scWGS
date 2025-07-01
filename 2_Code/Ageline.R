@@ -83,6 +83,11 @@ merged_df$Callable_Loci <- as.numeric(merged_df$Callable_Loci)
 
 merged_df$Nmut_adj <- merged_df$Number_of_mutations/merged_df$Callable_Loci * hg38_autosomal_nonN_genome_size
 
+# Make ageline plot 
+
+pdf("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/Ageline/Figures/Ageline_lm.pdf",
+    width = 10, height = 6)
+
 ggplot(merged_df,
        aes(x = Age_at_sampling_Y,
            y = Nmut_adj,
@@ -116,13 +121,14 @@ ggplot(merged_df,
   labs(
     x      = "Age at sampling (years)",
     y      = "Autosomal SNVs per genome (normalised to callable loci)",
-    colour = "MYC translocation"
+    colour = "MYC::IGH translocation"
   ) +
   
   theme_CHemALL() +
   theme(text      = element_text(size = 8, colour = "black"),
         axis.text = element_text(size = 6, colour = "black"))
 
+dev.off()
 
 # Plot Bulks in the ageline to see where they lie (i.e. what does the single cell approach add?)    
 # Make sure to only include autosomal, VAF>0.3 SNVs! only  
