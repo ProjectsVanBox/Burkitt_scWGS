@@ -59,116 +59,38 @@ drivers_P3G6_dedup <- drivers_P3G6_f[!duplicated(drivers_P3G6_f[c("Sample", "Gen
 
 drivers_P3G6_shared <- drivers_P3G6_dedup %>%
   mutate(Effect = case_when(
-    Effect == "missense_variant"    ~ "missense",
-    Effect == "missense_variant&splice_region_variant"    ~ "missense",
-    Effect == "stop_gained"         ~ "nonsense",
-    Effect == "inframe_insertion"   ~ "indel",
-    Effect == "frameshift_variant"   ~ "indel",
-    Effect == "downstream_gene_variant"    ~ "missense",
+    Effect == "missense_variant"    ~ "Missense mutation",
+    Effect == "missense_variant&splice_region_variant"    ~ "Missense mutation",
+    Effect == "5_prime_UTR_variant"    ~ "UTR mutation",
+    Effect == "3_prime_UTR_variant&NMD_transcript_variant"    ~ "UTR mutation",
+    Effect == "stop_gained"         ~ "Nonsense mutation",
+    Effect == "splice_donor_variant"   ~ "Splice site",
+    Effect == "frameshift_variant"   ~ "Frameshift mutation",
+    Effect == "downstream_gene_variant"    ~ "Up or Downstream gene mutation",
+    Effect == "inframe_insertion"    ~ "In Frame Ins",
+    Effect == "inframe_deletion&splice_region_variant"    ~ "In Frame Del",
+    Effect == "upstream_gene_variant"    ~ "Up or Downstream gene mutation",
+    Effect == "intron_variant"    ~ "Intron mutation",
     TRUE                            ~ Effect  # keep unchanged if not matched
   ))
 
-# Create the matrix with effects as values, and combine effects with ';' if needed
+# Make colour palette for later
 
-effect_matrix <- drivers_P3G6_shared %>%
-  dplyr::select(Gene, Sample, Effect) %>%
-  distinct() %>%
-  group_by(Gene, Sample) %>%
-  summarise(Effect = paste(Effect, collapse = "; "), .groups = "drop") %>%
-  pivot_wider(
-    names_from = Gene,  # Gene names as columns
-    values_from = Effect,
-    values_fill = list(Effect = " ")  # Fill missing values with empty string
-  )
-
-# Convert tibble to data frame
-
-effect_matrix <- as.data.frame(effect_matrix)
-
-# Set Sample as row names
-
-rownames(effect_matrix) <- effect_matrix$Sample
-
-# Drop the Sample column as it's now the row names
-
-effect_matrix <- effect_matrix[, -1]
-effect_matrix_t <- t(as.matrix(effect_matrix))
-
-# Give colours and band heights to the different mutation types
-
-col = c("indel" = "blue", "nonsense" = "red", "missense" = "#008000")
-alter_fun = list(
-  background = function(x, y, w, h) {
-    grid.rect(x, y, w-unit(2, "pt"), h-unit(2, "pt"), 
-              gp = gpar(fill = "#CCCCCC", col = NA))
-  },
-  # small blue
-  indel = function(x, y, w, h) {
-    grid.rect(x, y, w-unit(2, "pt"), h*0.33, 
-              gp = gpar(fill = col["indel"], col = NA))
-  },
-  # big red
-  nonsense = function(x, y, w, h) {
-    grid.rect(x, y, w-unit(2, "pt"), h-unit(2, "pt"), 
-              gp = gpar(fill = col["nonsense"], col = NA))
-  },
-  # small green
-  missense = function(x, y, w, h) {
-    grid.rect(x, y, w-unit(2, "pt"), h*0.33, 
-              gp = gpar(fill = col["missense"], col = NA))
-  }
+col <- c(
+  Missense_mutation              = "#008000",
+  Intron_mutation                = "#7D3C98",
+  In_Frame_Ins                   = "#8B0000",
+  Frameshift_mutation            = "#1F77B4",
+  Splice_site                    = "#FF8C00",
+  Nonsense_mutation              = "#FF0000",
+  UTR_mutation                   = "#FFD700",
+  In_Frame_Del                   = "#8B4513",
+  Up_or_Downstream_gene_mutation    = "#20B2AA"
 )
-
-# Provide sample info
-
-input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Sample_overview.xlsx') 
-P3G6_rows <- input_df %>% filter(Novogene_ID == "P3G6") %>% arrange(factor(Myc_translocation_IGV, levels = c("no", "yes")))   
-P3G6_rows <- P3G6_rows %>% filter(!grepl("MSCBULK", Sample_name))
-P3G6_samples <- P3G6_rows$Sample_name
-
-# Filter the sample vector to include only those present in the matrix
-
-ordered_samples <- P3G6_samples[P3G6_samples %in% colnames(effect_matrix_t)]
-
-# Reorder the columns of the matrix
-
-effect_matrix_t <- effect_matrix_t[, ordered_samples]
-
-# Define annotation colors
-
-group_colors <- c(Ascites = "black")  
-sample_group <- ifelse(ordered_samples %in% P3G6_samples, "Ascites", NA)
-
-# Create the top annotation with visible legend
-
-top_annot <- HeatmapAnnotation(
-  Location = sample_group,
-  col = list(Location = group_colors),
-  annotation_name_side = "left"
-)
-
-column_title = "P3G6 oncoplot"
-heatmap_legend_param = list(title = "Alternations", at = c("indel", "nonsense", "missense"), 
-                            labels = c("Indel", "Nonsense", "Missense"))
-
-# Make initial oncoplot
-
-pdf("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/Drivers/P3G6_oncoprint_before_manual_check.pdf", width = 10, height = 6)  # adjust size as needed
-oncoPrint(effect_matrix_t,
-          alter_fun = alter_fun,
-          col = col,
-          column_title = column_title,
-          heatmap_legend_param = heatmap_legend_param,
-          show_column_names = TRUE,
-          column_order = colnames(effect_matrix_t),
-          top_annotation = top_annot)
-dev.off()
 
 # Make a table of driver mutations to check manually on IGV
 
-drivers_to_check <- drivers_P3G6_shared %>%
-  dplyr::select(-Sample) %>%
-  distinct()
+drivers_to_check <- drivers_P3G6_shared %>% dplyr::select(-Sample) %>% distinct()
 
 # Import csv file AFTER manual checking on IGV
 
@@ -189,6 +111,13 @@ effect_matrix_after_check_T <- t(as.matrix(effect_matrix_after_check))
 # Convert to character if necessary
 
 colnames(effect_matrix_after_check_T) <- as.character(colnames(effect_matrix_after_check_T))
+
+# Provide sample info
+
+input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Sample_overview.xlsx') 
+P3G6_rows <- input_df %>% filter(Novogene_ID == "P3G6") %>% arrange(factor(Myc_translocation_IGV, levels = c("no", "yes")))   
+P3G6_rows <- P3G6_rows %>% filter(!grepl("MSCBULK", Sample_name))
+P3G6_samples <- P3G6_rows$Sample_name
 
 # Find which sample IDs are missing from the matrix
 
@@ -219,10 +148,7 @@ sample_group <- ifelse(ordered_samples %in% P3G6_samples, "Ascites", NA)
 
 # Define which samples are Normal B cell, which are BL and which are Bulk
 
-normal_bcell_samples <- c("P3G6GPDABC31", "PB11197-BLASC-BCELLP2F4", 
-                          "PB11197-BLASC-BCELLP2B4", "PB11197-BLASC-BCELLP2E4", 
-                          "PB11197-BLASC-BCELLP2D4", "PB11197-BLASC-BCELLP2C4")
-
+normal_bcell_samples <- P3G6_rows$Sample_name[P3G6_rows$Myc_translocation_IGV == "No"]
 
 P3G6_rows <- P3G6_rows %>% 
   mutate(
@@ -246,21 +172,44 @@ P3G6_rows <- P3G6_rows %>%
 
 cell_type <- as.character(P3G6_rows$Category)
 
+# Create boxes
+
+draw_box <- function(x, y, w, h, fill)
+  grid.rect(x, y, w - unit(2, "pt"), h - unit(2, "pt"),
+            gp = gpar(fill = fill, col = NA))
+
+variant_classes <- names(col)
+
+alter_fun <- c(
+  background = function(x, y, w, h) {
+    grid.rect(x, y, w - unit(2, "pt"), h - unit(2, "pt"),
+              gp = gpar(fill = "#CCCCCC", col = NA))
+  },
+  setNames(lapply(variant_classes, \(v)
+                  \(x, y, w, h) draw_box(x, y, w, h, col[v])), variant_classes)
+)
+
 # Create the top annotation with both Location and CellType
 
 top_annot <- HeatmapAnnotation(
   Location = sample_group,
-  Cell_Type = cell_type,
+  Sample = cell_type,
   col = list(
     Location = group_colors,
-    Cell_Type = celltype_colors
+    Sample = celltype_colors
   ),
   annotation_name_side = "left"
 )
 
 column_title = "P3G6 oncoplot"
-heatmap_legend_param = list(title = "Alternations", at = c("indel", "nonsense", "missense"), 
-                            labels = c("Indel", "Nonsense", "Missense"))
+
+# Variant labels
+
+heatmap_legend_param <- list(
+  title  = "Alterations",
+  at     = names(col),    
+  labels = gsub("_", " ", names(col))
+)
 
 ordered_samples <- P3G6_rows$Sample_name
 
@@ -281,3 +230,4 @@ oncoPrint(effect_matrix_after_check_T,
           top_annotation = top_annot,
           right_annotation = NULL)
 dev.off()
+
