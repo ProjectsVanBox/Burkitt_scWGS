@@ -2,7 +2,7 @@
 # Manuscript: Clonal Evolution of Paediatric Burkitt Lymphoma Through Time and Space
 # Description: Script to plot oncoplot for PRN4
 # Author: Alexander Steemers
-# Date: July 2025
+# Date: June 2025
 ################################################################################
 
 # Load libraries
@@ -59,168 +59,38 @@ drivers_PRN4_dedup <- drivers_PRN4_f[!duplicated(drivers_PRN4_f[c("Sample", "Gen
 
 drivers_PRN4_shared <- drivers_PRN4_dedup %>%
   mutate(Effect = case_when(
-    Effect == "missense_variant"    ~ "missense",
-    Effect == "5_prime_UTR_variant"    ~ "missense",
-    Effect == "3_prime_UTR_variant&NMD_transcript_variant"    ~ "indel",
-    Effect == "stop_gained"         ~ "nonsense",
-    Effect == "splice_donor_variant"   ~ "missense",
-    Effect == "frameshift_variant"   ~ "indel",
-    Effect == "downstream_gene_variant"    ~ "indel",
-    Effect == "inframe_deletion&splice_region_variant"    ~ "indel",
+    Effect == "missense_variant"    ~ "Missense mutation",
+    Effect == "missense_variant&splice_region_variant"    ~ "Missense mutation",
+    Effect == "5_prime_UTR_variant"    ~ "UTR mutation",
+    Effect == "3_prime_UTR_variant&NMD_transcript_variant"    ~ "UTR mutation",
+    Effect == "stop_gained"         ~ "Nonsense mutation",
+    Effect == "splice_donor_variant"   ~ "Splice site",
+    Effect == "frameshift_variant"   ~ "Frameshift mutation",
+    Effect == "downstream_gene_variant"    ~ "Up or Downstream gene mutation",
+    Effect == "inframe_insertion"    ~ "In Frame Ins",
+    Effect == "inframe_deletion&splice_region_variant"    ~ "In Frame Del",
+    Effect == "upstream_gene_variant"    ~ "Up or Downstream gene mutation",
+    Effect == "intron_variant"    ~ "Intron mutation",
     TRUE                            ~ Effect  # keep unchanged if not matched
   ))
 
-# Create the matrix with effects as values, and combine effects with ';' if needed
+# Make colour palette for later
 
-effect_matrix <- drivers_PRN4_shared %>%
-  dplyr::select(Gene, Sample, Effect) %>%
-  distinct() %>%
-  group_by(Gene, Sample) %>%
-  summarise(Effect = paste(Effect, collapse = "; "), .groups = "drop") %>%
-  pivot_wider(
-    names_from = Gene,  # Gene names as columns
-    values_from = Effect,
-    values_fill = list(Effect = " ")  # Fill missing values with empty string
-  )
-
-# Convert tibble to data frame
-
-effect_matrix <- as.data.frame(effect_matrix)
-
-# Set Sample as row names
-
-rownames(effect_matrix) <- effect_matrix$Sample
-
-# Drop the Sample column as it's now the row names
-
-effect_matrix <- effect_matrix[, -1]
-effect_matrix_t <- t(as.matrix(effect_matrix))
-
-# Give colours and band heights to the different mutation types
-
-col = c("indel" = "blue", "nonsense" = "red", "missense" = "#008000")
-alter_fun = list(
-  background = function(x, y, w, h) {
-    grid.rect(x, y, w-unit(2, "pt"), h-unit(2, "pt"), 
-              gp = gpar(fill = "#CCCCCC", col = NA))
-  },
-  # small blue
-  indel = function(x, y, w, h) {
-    grid.rect(x, y, w-unit(2, "pt"), h*0.33, 
-              gp = gpar(fill = col["indel"], col = NA))
-  },
-  # big red
-  nonsense = function(x, y, w, h) {
-    grid.rect(x, y, w-unit(2, "pt"), h-unit(2, "pt"), 
-              gp = gpar(fill = col["nonsense"], col = NA))
-  },
-  # small green
-  missense = function(x, y, w, h) {
-    grid.rect(x, y, w-unit(2, "pt"), h*0.33, 
-              gp = gpar(fill = col["missense"], col = NA))
-  }
+col <- c(
+  Missense_mutation              = "#008000",
+  Intron_mutation                = "#7D3C98",
+  In_Frame_Ins                   = "#8B0000",
+  Frameshift_mutation            = "#1F77B4",
+  Splice_site                    = "#FF8C00",
+  Nonsense_mutation              = "#FF0000",
+  UTR_mutation                   = "#FFD700",
+  In_Frame_Del                   = "#8B4513",
+  Up_or_Downstream_gene_mutation    = "#20B2AA"
 )
-
-# Provide sample info
-
-input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Sample_overview.xlsx') 
-PRN4_rows <- input_df %>% filter(Novogene_ID == "PRN4") %>% arrange(factor(Myc_translocation_IGV, levels = c("no", "yes")))   
-PRN4_rows <- PRN4_rows %>% filter(!grepl("MSCBULK", Sample_name))
-PRN4_samples <- PRN4_rows$Sample_name
-
-PRN4_BM <- PRN4_rows$Sample_name[PRN4_rows$Biopsy_type == "BM"]
-
-PRN4_LN <- PRN4_rows$Sample_name[PRN4_rows$Biopsy_type == "LN"]
-
-# Assign sample group labels
-
-ordered_samples <- PRN4_samples[PRN4_samples %in% colnames(effect_matrix_t)]
-all_samples <- colnames(effect_matrix_t)
-sample_group <- ifelse(ordered_samples %in% PRN4_LN, "LN",
-                       ifelse(ordered_samples %in% PRN4_BM, "BM", NA))
-
-# Define annotation colors
-
-group_colors <- c(LN = "grey", BM = "black")  # grey for LN, black for BM
-celltype_colors <- c("Normal B-cell" = "#E7872B", "Burkitt Lymphoma cell" = "#3F78C1", "LN Tumour Bulk" = "#00008B")
-
-# Define which samples are Normal B cell and which are bulk
-
-normal_bcell_samples <- PRN4_rows$Sample_name[PRN4_rows$Myc_translocation_IGV == "No"]
-
-PRN4_LN_Bulk <- c("PRN4GBDLBC72")
-
-# Define CellType annotation
-
-cell_type <- case_when(
-  ordered_samples %in% normal_bcell_samples ~ "Normal B-cell",
-  ordered_samples %in% PRN4_LN_Bulk        ~ "LN Tumour Bulk",
-  TRUE                                      ~ "Burkitt Lymphoma cell"
-)
-
-
-# Build the annotation data.frame
-
-annot_df <- data.frame(
-  Location  = sample_group,   # BM / LN / NA
-  Cell_Type = cell_type,      # factor we set earlier
-  row.names = ordered_samples,
-  check.names = FALSE
-)
-
-# Explicitly set factor levels so order() / arrange() know the hierarchy
-annot_df$Cell_Type <- factor(
-  annot_df$Cell_Type,
-  levels = c("Normal B-cell",
-             "Burkitt Lymphoma cell",
-             "LN Tumour Bulk")   # overall order of the three blocks
-)
-
-# Within-BL block, BM first then LN
-
-annot_df$Location <- factor(
-  annot_df$Location,
-  levels = c("BM", "LN")         
-)
-
-# Derive the new sample order
-ordered_samples2 <- rownames(
-  annot_df[ order(annot_df$Cell_Type, annot_df$Location), ]
-)
-
-#   Re-create the HeatmapAnnotation with the *reordered* annot_df
-top_annot <- HeatmapAnnotation(
-  df  = annot_df[ordered_samples2, ],   # keep rows aligned
-  col = list(
-    Location  = group_colors,
-    Cell_Type = celltype_colors
-  ),
-  annotation_name_side = "left"
-)
-
-# Make initial oncoplot
-
-pdf("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/Drivers/PRN4_oncoprint_before_manual_check.pdf",
-    width = 10, height = 6)
-
-oncoPrint(
-  effect_matrix_t[ , ordered_samples2, drop = FALSE],
-  alter_fun            = alter_fun,
-  col                  = col,
-  column_title         = "PRN4 oncoplot",
-  heatmap_legend_param = heatmap_legend_param,
-  show_column_names    = TRUE,
-  column_order         = ordered_samples2,
-  top_annotation       = top_annot
-)
-
-dev.off()
 
 # Make a table of driver mutations to check manually on IGV
 
-drivers_to_check <- drivers_PRN4_shared %>%
-  dplyr::select(-Sample) %>%
-  distinct()
+drivers_to_check <- drivers_PRN4_shared %>% dplyr::select(-Sample) %>% distinct()
 
 # Import csv file AFTER manual checking on IGV
 
@@ -242,6 +112,17 @@ effect_matrix_after_check_T <- t(as.matrix(effect_matrix_after_check))
 
 colnames(effect_matrix_after_check_T) <- as.character(colnames(effect_matrix_after_check_T))
 
+# Provide sample info
+
+input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Sample_overview.xlsx') 
+PRN4_rows <- input_df %>% filter(Novogene_ID == "PRN4") %>% arrange(factor(Myc_translocation_IGV, levels = c("no", "yes")))   
+PRN4_rows <- PRN4_rows %>% filter(!grepl("MSCBULK", Sample_name))
+PRN4_samples <- PRN4_rows$Sample_name
+
+PRN4_BM <- PRN4_rows$Sample_name[PRN4_rows$Biopsy_type == "BM"]
+
+PRN4_LN <- PRN4_rows$Sample_name[PRN4_rows$Biopsy_type == "LN"]
+
 # Find which sample IDs are missing from the matrix
 
 missing_samples <- setdiff(PRN4_samples, colnames(effect_matrix_after_check_T))
@@ -253,20 +134,121 @@ colnames(new_cols) <- missing_samples
 rownames(new_cols) <- rownames(effect_matrix_after_check_T)
 effect_matrix_after_check_T <- cbind(effect_matrix_after_check_T, new_cols)
 
-# Make initial oncoplot
+# Filter the sample vector to include only those present in the matrix
 
-pdf("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/Drivers/PRN4_oncoprint_after_manual_check.pdf",
-    width = 10, height = 6)
+ordered_samples <- PRN4_samples[PRN4_samples %in% colnames(effect_matrix_after_check_T)]
+all_samples <- colnames(effect_matrix_after_check_T)
+sample_group <- ifelse(ordered_samples %in% PRN4_LN, "LN",
+                       ifelse(ordered_samples %in% PRN4_BM, "BM", NA))
 
-oncoPrint(
-  effect_matrix_after_check_T[ , ordered_samples2, drop = FALSE],
-  alter_fun            = alter_fun,
-  col                  = col,
-  column_title         = "PRN4 oncoplot",
-  heatmap_legend_param = heatmap_legend_param,
-  show_column_names    = TRUE,
-  column_order         = ordered_samples2,
-  top_annotation       = top_annot
+# Define group colors
+
+group_colors <- c(LN = "grey", BM = "black") 
+
+# Define cell type colors
+
+celltype_colors <- c("Normal B-cell" = "#E7872B", "Burkitt Lymphoma cell" = "#3F78C1", "Bulk Tumour" = "#00008B")
+
+# Define which samples are Normal B cell, which are BL and which are Bulk
+
+normal_bcell_samples <- PRN4_rows$Sample_name[PRN4_rows$Myc_translocation_IGV == "No"]
+
+PRN4_LN_Bulk <- c("PRN4GBDLBC72")
+
+# Define CellType annotation
+
+Sample <- case_when(
+  ordered_samples %in% normal_bcell_samples ~ "Normal B-cell",
+  ordered_samples %in% PRN4_LN_Bulk        ~ "Bulk Tumour",
+  TRUE                                      ~ "Burkitt Lymphoma cell"
 )
 
+
+# Build the annotation data.frame
+
+annot_df <- data.frame(
+  Location  = sample_group,   # BM / LN / NA
+  Sample = Sample,      # factor we set earlier
+  row.names = ordered_samples,
+  check.names = FALSE
+)
+
+# Explicitly set factor levels so order() / arrange() know the hierarchy
+annot_df$Sample <- factor(
+  annot_df$Sample,
+  levels = c("Normal B-cell",
+             "Burkitt Lymphoma cell",
+             "Bulk Tumour")   # overall order of the three blocks
+)
+
+# Within-BL block, BM first then LN
+
+annot_df$Location <- factor(
+  annot_df$Location,
+  levels = c("BM", "LN")         
+)
+
+# Derive the new sample order
+
+ordered_samples <- rownames(
+  annot_df[ order(annot_df$Sample, annot_df$Location), ]
+)
+
+# Create boxes
+
+draw_box <- function(x, y, w, h, fill)
+  grid.rect(x, y, w - unit(2, "pt"), h - unit(2, "pt"),
+            gp = gpar(fill = fill, col = NA))
+
+variant_classes <- names(col)
+
+alter_fun <- c(
+  background = function(x, y, w, h) {
+    grid.rect(x, y, w - unit(2, "pt"), h - unit(2, "pt"),
+              gp = gpar(fill = "#CCCCCC", col = NA))
+  },
+  setNames(lapply(variant_classes, \(v)
+                  \(x, y, w, h) draw_box(x, y, w, h, col[v])), variant_classes)
+)
+
+# Create the top annotation with both Location and CellType
+
+top_annot <- HeatmapAnnotation(
+  df  = annot_df[ordered_samples, ],   # keep rows aligned
+  col = list(
+    Location  = group_colors,
+    Sample = celltype_colors
+  ),
+  annotation_name_side = "left"
+)
+
+column_title = "PRN4 oncoplot"
+
+# Variant labels
+
+heatmap_legend_param <- list(
+  title  = "Alterations",
+  at     = names(col),    
+  labels = gsub("_", " ", names(col))
+)
+
+# Re-order the columns of the matrix
+
+effect_matrix_after_check_T <- effect_matrix_after_check_T[ , ordered_samples]
+
+# Print final oncoplot 
+
+pdf("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/Drivers/PRN4_oncoprint_after_manual_check.pdf", width = 10, height = 6)  # adjust size as needed
+oncoPrint(effect_matrix_after_check_T,
+          alter_fun = alter_fun,
+          col = col,
+          column_title = column_title,
+          heatmap_legend_param = heatmap_legend_param,
+          show_column_names = TRUE,
+          column_order = colnames(effect_matrix_after_check_T),
+          top_annotation = top_annot,
+          right_annotation = NULL,
+          column_names_gp = gpar(fontsize = 7))
 dev.off()
+
+
