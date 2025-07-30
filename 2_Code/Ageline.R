@@ -19,6 +19,7 @@ library(GenomicRanges)
 library(stringr)
 library(nlme)
 library(dplyr)
+library(ggrepel)
 ref_genome <- "BSgenome.Hsapiens.UCSC.hg38"
 library(ref_genome, character.only = TRUE)
 
@@ -49,16 +50,16 @@ input_df_sub <- input_df_sc[!is.na(input_df_sc$Callable_fraction) & !is.na(input
 diagnostic_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Bulk_sample_overview.csv')
 
 below_curve_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/below_curve_samples.csv')
-bad_baf_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/bad_baf_samples.csv')
-fail_vaf_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/VAF/Data/PTA_samples_failVAFcheck_35mad.txt')
+fail_vaf_df <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/PTA_samples_failVAFcheck.txt')
+low_callable_loci <- read.csv('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/low_callable_loci.csv')
 
 # Make blacklist
 
-blacklist <- unique(c(below_curve_df$Sample_name, bad_baf_df$Sample_name, fail_vaf_df$samplename))
+blacklist <- unique(c(below_curve_df$Sample_name, fail_vaf_df$samplename, low_callable_loci$Sample_name))
 
 # Load single cell PASS autosomal variants
 
-SBSs_autosomal_PASS <- readRDS(file = "../MutLoad/Data/autosomal_PASS_variants_PTA_VAF015.RDS")
+SBSs_autosomal_PASS <- readRDS(file = "../MutLoad/Data/autosomal_PASS_variants_VAF015.RDS")
 
 # Filter out blacklist samples and bulk sample
 
@@ -83,50 +84,75 @@ merged_df$Callable_Loci <- as.numeric(merged_df$Callable_Loci)
 
 merged_df$Nmut_adj <- merged_df$Number_of_mutations/merged_df$Callable_Loci * hg38_autosomal_nonN_genome_size
 
+# Name samples based on myc translocation and SBS9 
+
+merged_df <- merged_df %>% mutate(MYC_SBS9_status = paste0(Myc_translocation_IGV, "_", SBS9))
+
+merged_df <- merged_df %>% mutate(
+    Sample = case_when(
+      MYC_SBS9_status == "Yes_Positive" ~ "Burkitt Lymphoma cell",
+      MYC_SBS9_status == "No_Positive"  ~ "Normal Memory B cell",
+      MYC_SBS9_status == "No_Negative"  ~ "Normal Naive B cell",
+      MYC_SBS9_status == "No_NA"  ~ "Unknown",
+      MYC_SBS9_status == "Yes_NA"  ~ "Burkitt Lymphoma cell")
+    )
+
+# Get slopes and co-efficients
+
+eq_df <- merged_df %>%
+  group_by(Sample) %>%
+  summarise(m = coef(lm(Nmut_adj ~ Age_at_sampling_Y))[2],
+            c = coef(lm(Nmut_adj ~ Age_at_sampling_Y))[1],
+            .groups = "drop") %>%
+  mutate(label = paste0("y = ", round(m, 0), "x + ", round(c, 0)),
+         x_pos = 20,                      
+         y_pos = m * x_pos + c + 100)   
+
 # Make ageline plot 
 
 pdf("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/Ageline/Figures/Ageline_lm.pdf",
     width = 10, height = 6)
 
-ggplot(merged_df,
-       aes(x = Age_at_sampling_Y,
-           y = Nmut_adj,
-           colour = Myc_translocation_IGV)) +
+ggplot(merged_df, aes(Age_at_sampling_Y, Nmut_adj, colour = Sample)) +
+  #geom_smooth(data = subset(merged_df, Sample == "Burkitt Lymphoma cell"),
+  #            method = "lm", se = FALSE, linewidth = 0.7,
+  #            fullrange = TRUE, colour = "#3F78C1") +
+  #geom_smooth(data = subset(merged_df, Sample == "Normal Memory B cell"),
+  #            method = "lm", se = FALSE, linewidth = 0.7,
+  #            fullrange = TRUE, colour = "#B96C22") +
+  #geom_smooth(data = subset(merged_df, Sample == "Normal Naive B cell"),
+  #            method = "lm", se = FALSE, linewidth = 0.7,
+  #            fullrange = TRUE, colour = "#EC9F55") +
+  #geom_smooth(data = subset(merged_df, Sample == "Unknown"),
+  #            method = "lm", se = FALSE, linewidth = 0.7,
+  #            fullrange = TRUE, colour = "#000000") +
+  geom_jitter(width = 0.4, height = 0.4, size = 3) +
+ 
+  #geom_text(data = eq_df,
+  #          aes(x = x_pos, y = y_pos, label = label, colour = Sample),
+  #          hjust = -0.05, vjust = 1, size = 5, show.legend = FALSE) +
   
-  #geom_point(alpha = 0.6, size = 2) +
+  scale_colour_manual(values = c("Burkitt Lymphoma cell" = "#3F78C1",
+                                 "Normal Memory B cell"  = "#B96C22",
+                                 "Normal Naive B cell"   = "#EC9F55",
+                                 "Unknown" = "#000000" )) +
+  scale_x_continuous(limits = c(0, 20), breaks = seq(0, 20, 4), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 3500), breaks = seq(0,3500,500), expand = c(0, 0)) +
+  labs(x = "Age at sampling (in years)", y = "SNVs per cell") +
   
-  geom_jitter(width = 0.4, height = 0.4,
-              alpha = 0.6, size = 2) +
-  
-  ## regression line for translocated group only
-  geom_smooth(data = subset(merged_df, Myc_translocation_IGV == "Yes"),
-              method = "lm", se = FALSE,
-              linewidth = 0.7, fullrange = TRUE, colour = "#3F78C1") +
-  
-  scale_colour_manual(values = c(No = "#E7872B", Yes = "#3F78C1")) +
-  
-  ## x-axis from 0 to 20, ticks every 4; no extra padding
-  scale_x_continuous(
-    limits  = c(0, 20),
-    breaks  = seq(0, 20, 4),
-    expand  = c(0, 0)          # keep 0 flush against axis
-  ) +
-  
-  ## y-axis starts at 0 and rises to the data’s max; no extra padding
-  scale_y_continuous(
-    limits = c(0, 3000),
-    expand = c(0, 0)
-  ) +
-  
-  labs(
-    x      = "Age at sampling (years)",
-    y      = "Autosomal SNVs per genome (normalised to callable loci)",
-    colour = "MYC::IGH translocation"
-  ) +
-  
+  coord_cartesian(clip = "off") +   
+  geom_abline(intercept = 1139, slope = 17, linetype = "dashed", colour = "black") +
+  geom_abline(intercept = 215, slope = 15, linetype = "dotted", colour = "black") +
   theme_CHemALL() +
-  theme(text      = element_text(size = 8, colour = "black"),
-        axis.text = element_text(size = 6, colour = "black"))
+  theme(
+    legend.position      = c(1.05, 1),   
+    legend.justification = c(0, 1),      
+    legend.background    = element_rect(fill = "white", colour = NA),
+    legend.margin        = margin(2, 4, 2, 4),  
+    plot.margin          = margin(t = 15, r = 160, b = 15, l = 15),
+    text            = element_text(size = 12, colour = "black"),
+    axis.text       = element_text(size = 12, colour = "black")
+  )
 
 dev.off()
 

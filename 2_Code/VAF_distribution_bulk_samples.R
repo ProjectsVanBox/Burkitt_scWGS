@@ -82,14 +82,15 @@ vaf_df <- reduce(vaf_tbl_list, full_join, by = "variant")
 
 # Order from highest median VAF to lowest median VAF
 
-vaf_long <- vaf_df %>%
+vaf_long <- vaf_df %>%                                   
+  filter(!str_detect(variant, "^(chr)?[XY]:")) %>%  
   pivot_longer(-variant,
                names_to  = "Sample",
-               values_to = "VAF") %>%
-  filter(!is.na(VAF)) %>%
-  group_by(Sample) %>%
-  mutate(median_VAF = median(VAF, na.rm = TRUE)) %>%
-  ungroup() %>%
+               values_to = "VAF") %>% 
+  filter(!is.na(VAF)) %>% 
+  group_by(Sample) %>% 
+  mutate(median_VAF = median(VAF, na.rm = TRUE)) %>% 
+  ungroup() %>% 
   mutate(Sample = reorder(Sample, -median_VAF))
 
 # Make violin plot
@@ -186,6 +187,7 @@ vaf_tbl_list2 <- map(bulkWGS_vcf_files, function(vcf_path) {
 vaf_df2 <- reduce(vaf_tbl_list2, full_join, by = "variant")
 
 vaf_long2 <- vaf_df2 %>%
+  filter(!str_detect(variant, "^(chr)?[XY]:")) %>%  
   pivot_longer(-variant,
                names_to  = "Sample",
                values_to = "VAF") %>%
@@ -195,6 +197,7 @@ vaf_long2 <- vaf_df2 %>%
 
 pdf("Figures/VAF_distribution_bulk_sorted_tumor_samples.pdf",
     width = 10, height = 6)
+
 ggplot(vaf_long2, aes(x = Sample, y = VAF)) +
   geom_violin(trim = FALSE, scale = "width") +
   geom_boxplot(width = 0.10, outlier.size = 0.5) +  
@@ -206,6 +209,7 @@ ggplot(vaf_long2, aes(x = Sample, y = VAF)) +
   ylab("Variant Allele Frequency") +
   xlab("Tumour sample") +
   ggtitle("VAF distributions across bulk tumour samples")
+
 dev.off()
 
 # Inspect range of VAF values
