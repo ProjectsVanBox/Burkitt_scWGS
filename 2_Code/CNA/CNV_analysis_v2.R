@@ -1,0 +1,445 @@
+################################################################################
+# Manuscript: Clonal Evolution of Paediatric Burkitt Lymphoma Through Time and Space
+# Task: Build cohort-level CNV consensus (gains/losses/LOH) and plot per-cohort heatmaps
+# Author: Alexander Steemers
+# Date: October 2025
+################################################################################
+
+suppressPackageStartupMessages({
+  library(data.table)
+  library(igraph)
+  library(readxl)
+  library(pheatmap)
+})
+
+# ------------------------------ CONFIG ----------------------------------------
+
+# I/O
+input_dir   <- "~/hpc/pmc_vanboxtel/projects/Burkitt/3_Output/PTATO/"
+out_dir     <- "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CNA/Figures/"
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+# External inputs
+cytoband_file <- "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/cytoBandhg38.txt"
+sample_overview_xlsx <- "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Sample_overview.xlsx"
+bulk_overview_csv    <- "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Bulk_sample_overview.csv"
+low_callable_csv     <- "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/low_callable_loci.csv"
+below_curve_csv      <- "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/below_curve_samples.csv"
+bad_baf_csv          <- "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/bad_baf_samples.csv"
+fail_vaf_txt         <- "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/PTA_samples_failVAFcheck.txt"
+
+# Genome assumptions
+genome      <- "hg38"
+std_chr     <- paste0("chr", 1:22)
+
+# CNV merging parameters
+merge_max_gap   <- 30e6   # basepairs; merges CNV segments if they’re within this gap
+merge_min_size  <- 1e4    # minimum merged width to keep
+merge_passes    <- 50
+
+# Overlap graph parameters
+recip_overlap   <- 0.80   # reciprocal overlap threshold
+min_samples_shared <- 2   # keep components seen in >= this many samples
+
+# Heatmap parameters
+hm_width        <- 10
+hm_row_height   <- 0.20   # inches per row
+hm_row_min      <- 6
+hm_row_max      <- 20
+
+# Cohort membership (left as in your script; edit as needed)
+PVA9_samples <- c(
+  "PVA9GTDBBC77","PVA9GTDBBC65","PVA9GTDBBC76","PVA9GTDBBC74","PVA9GTDBBC68","PVA9GTDBBC63",
+  "PVA9GTDBBC67","PVA9GTDBBC70","PVA9GTDBBC69","PVA9GTDBBC73","PVA9GTDBBC66","PVA9GTDABC55",
+  "PVA9GTDABC57","PVA9GTDABC54","PVA9GTDABC48","PVA9GTDABC21","PVA9GTDABC15","PVA9GTDABC1",
+  "PVA9GTDABC52","PVA9GTDABC43","PVA9GTDABC2","PVA9GTDABC24","PVA9GTDABC34","PVA9GTDABC61",
+  "PVA9GTDABC60","PVA9GTDABC59","PVA9GTDABC37","PVA9GTDABC56","PVA9GTDABC33","PVA9GTDABC53",
+  "PVA9GTDABC49","PVA9GTDABC32","PVA9GTDABC40","PVA9GTDABC42","PVA9GTDABC44","PVA9GTDABC35",
+  "PVA9GTDABC51","PVA9GTDABC45","PVA9GTDABC39","PVA9GTDABC50","PVA9GTDABC36","PVA9GTDABC62",
+  "PVA9GTDABC58","PVA9GTDABC46","PVA9GTDABC31","PVA9GTDABC47","PVA9GTDABC18","PVA9GTDABC25",
+  "PVA9GTDABC4","PVA9GTDABC16","PVA9GTDABC28","PVA9GTDABC27","PVA9GTDABC11","PVA9GTDABC19",
+  "PVA9GTDABC12","PVA9GTDABC13","PVA9GTDABC23","PVA9GTDABC17","PVA9GTDABC14","PVA9GTDABC10",
+  "PVA9GTDABC6","PVA9GTDABC5","PVA9GTDABC3"
+)
+PJBU_samples <- c(
+  "PJBUGTDBBC69","PJBUGTDBBC74","PJBUGTDBBC67","PJBUGTDBBC64","PJBUGTDBBC72",
+  "PJBUGTDBBC68","PJBUGTDBBC73","PJBUGTDBBC59","PJBUGTDBBC65","PJBUGTDBBC76",
+  "PJBUGTDBBC71","PJBUGTDBBC81","PJBUGTDBBC70","PJBUGTDBBC63","PJBUGTDBBC80",
+  "PJBUGTDBBC79","PJBUGTDABC9","PJBUGTDABC43","PJBUGTDABC54","PJBUGTDABC26",
+  "PJBUGTDABC37","PJBUGTDABC24","PJBUGTDABC11","PJBUGTDABC8","PJBUGTDABC6",
+  "PJBUGTDABC19","PJBUGTDABC42","PJBUGTDABC50","PJBUGTDABC13","PJBUGTDABC29",
+  "PJBUGTDABC30","PJBUGTDABC33","PJBUGTDABC32","PJBUGTDABC51","PJBUGTDABC56",
+  "PJBUGTDABC3","PJBUGTDABC40","PJBUGTDABC27","PJBUGTDABC55","PJBUGTDABC16",
+  "PJBUGTDABC2","PJBUGTDABC31","PJBUGTDABC44","PJBUGTDABC38","PJBUGTDABC39",
+  "PJBUGTDABC21","PJBUGTDABC58","PJBUGTDABC53","PJBUGTDABC49","PJBUGTDABC52",
+  "PJBUGTDABC1","PJBUGTDABC18","PJBUGTDABC45","PJBUGTDABC17","PJBUGTDABC41",
+  "PJBUGTDABC23","PJBUGTDABC35","PJBUGTDABC25"
+)
+P856_samples <- c(
+  "P856GDDUBC42","P856GDDUBC44","PB14458-BLPL-BCELLP4L3","PB14458-BLPL-BCELLP4K5",
+  "PB14458-BLPL-BCELLP4M3","PB14458-BLPL-BCELLP4B3","PB14458-BLPL-BCELLP4L5",
+  "P856GDDBBC63","PB14458-BLBM-BCELLP2F2","PB14458-BLBM-BCELLP2B3","P856GDDBBC60",
+  "P856GDDBBC46","PB14458-BLBM-BCELLP2B4","PB14458-BLBM-BCELLP2C4","PB14458-BLBM-BCELLP2N2",
+  "P856GDDBBC59","P856GDDBBC64","PB14458-BLBM-BCELLP2F4","P856GDDBBC58","P856GDDBBC54",
+  "P856GDDBBC48","PB14458-BLBM-BCELLP2I2","PB14458-BLBM-BCELLP2L4","PB14458-BLBM-BCELLP2E4",
+  "P856GDDBBC57","P856GDDBBC62","PB14458-BLBM-BCELLP2L3","P856GDDBBC61"
+)
+P3G6_samples <- c(
+  "P3G6GPDABC31","PB11197-BLASC-BCELLP2F4","PB11197-BLASC-BCELLP2D4","PB11197-BLASC-BCELLP2C4",
+  "PB11197-BLASC-BCELLP2B4","PB11197-BLASC-BCELLP2E4","P3G6GPDABC28","PB11197-BLASC-BCELLP1P3",
+  "PB11197-BLASC-BCELLP1C4","PB11197-BLASC-BCELLP1L3","PB11197-BLASC-BCELLP1J3",
+  "PB11197-BLASC-BCELLP1K4","PB11197-BLASC-BCELLP1O3","PB11197-BLASC-BCELLP1I4",
+  "PB11197-BLASC-BCELLP1B4","P3G6GPDABC26"
+)
+PIA9_samples <- c(
+  "PIA9GTDBBC75","PIA9GTDBBC64","PIA9GTDBBC52","PIA9GTDBBC54","PIA9GTDBBC57",
+  "PIA9GTDBBC73","PIA9GTDBBC58","PIA9GTDBBC60","PIA9GTDBBC67","PIA9GTDBBC59",
+  "PIA9GTDBBC63","PIA9GTDBBC72","PIA9GTDBBC61","PIA9GTDBBC77","PIA9GTDBBC68",
+  "PIA9GTDBBC55","PIA9GTDBBC65","PIA9GTDBBC53","PIA9GTDBBC66","PIA9GTDBBC56",
+  "PIA9GTDBBC74","PIA9GTDBBC71","PIA9GTDBBC76","PIA9GTDABC37","PIA9GTDABC7",
+  "PIA9GTDABC49","PIA9GTDABC21","PIA9GTDABC33","PIA9GTDABC19","PIA9GTDABC9",
+  "PIA9GTDABC26","PIA9GTDABC44","PIA9GTDABC5","PIA9GTDABC6","PIA9GTDABC25",
+  "PIA9GTDABC48","PIA9GTDABC18","PIA9GTDABC40","PIA9GTDABC34","PIA9GTDABC50",
+  "PIA9GTDABC42","PIA9GTDABC46","PIA9GTDABC47","PIA9GTDABC43","PIA9GTDABC20",
+  "PIA9GTDABC36","PIA9GTDABC24","PIA9GTDABC39","PIA9GTDABC15","PIA9GTDABC51",
+  "PIA9GTDABC23","PIA9GTDABC17","PIA9GTDABC45","PIA9GTDABC41","PIA9GTDABC27",
+  "PIA9GTDABC35","PIA9GTDABC22"
+)
+PRN4_samples <- c(
+  "PB08410-BLBM-BCELLP5G10","PRN4GPDBBC07","PB08410-BLBM-BCELLP2C8","PB08410-BLBM-BCELLP2G8",
+  "PB08410-BLBM-BCELLP2D8","PB08410-BLBM-BCELLP5E8","PB08410-BLBM-BCELLP5F8","PRN4GPDLBC15",
+  "PRN4GPDLBC17","PRN4GPDLBC09","PRN4GPDLBC11","PB08410-BLLN-BCELLP4F10","PRN4GPDLBC21",
+  "PRN4GPDLBC23","PB08410-BLLN-BCELLP4D10","PB08410-BLLN-BCELLP2D10","PRN4GPDLBC22",
+  "PB08410-BLLN-BCELLP4B11","PB08410-BLLN-BCELLP1B11","PRN4GPDLBC20","PB08410-BLLN-BCELLP2B10",
+  "PB08410-BLLN-BCELLP2E10","PRN4GPDLBC10","PB08410-BLLN-BCELLP4G10","PRN4GPDLBC16","PRN4GPDLBC19"
+)
+
+sample_sets <- list(
+  P3G6 = P3G6_samples,
+  P856 = P856_samples,
+  PIA9 = PIA9_samples,
+  PRN4 = PRN4_samples,
+  PVA9 = PVA9_samples,
+  PJBU = PJBU_samples
+)
+
+# QC / blacklist (same sources as original)
+input_df        <- read_excel(sample_overview_xlsx)
+diagnostic_df   <- fread(bulk_overview_csv)
+low_callable_df <- fread(low_callable_csv)
+below_curve_df  <- fread(below_curve_csv)
+bad_baf_df      <- fread(bad_baf_csv)
+fail_vaf_df     <- fread(fail_vaf_txt)
+
+blacklist <- unique(c(
+  below_curve_df$Sample_name,
+  low_callable_df$Sample_name,
+  bad_baf_df$Sample_name,
+  fail_vaf_df$samplename
+))
+
+# Some samples are explicitly known to have no CNAs (skip)
+samples_with_no_cnas <- c(
+  "PIA9GTDBBC69","PIA9GTDBBC75","PIA9GTDBBC71","PIA9GTDBBC73","PIA9GTDBBC76",
+  "PJBUGTDBBC72","PJBUGTDABC37","PJBUGTDBBC73","PB08410-BLBM-BCELLP2C8",
+  "PB08410-BLBM-BCELLP5G10","PRN4GPDLBC15","PVA9GTDABC42","PVA9GTDBBC73"
+)
+
+# --------------------------- HELPER FUNCTIONS ---------------------------------
+
+to_ucsc <- function(chr) {
+  chr <- as.character(chr)
+  ifelse(grepl("^chr", chr), chr, paste0("chr", chr))
+}
+
+read_one_cnv <- function(f) {
+  dt <- fread(f, sep = "\t", header = TRUE, showProgress = FALSE)
+  setnames(dt, tolower(names(dt)))
+  if ("chromosome" %in% names(dt)) setnames(dt, "chromosome", "chrom")
+  if ("chr" %in% names(dt) && !"chrom" %in% names(dt)) setnames(dt, "chr", "chrom")
+  
+  # normalize copy number field
+  if (!"copynumber" %in% names(dt)) {
+    if ("type" %in% names(dt))       dt[, copynumber := type]
+    else if ("state" %in% names(dt)) dt[, copynumber := state]
+    else stop(sprintf("Missing CopyNumber/type/state in %s", basename(f)))
+  }
+  
+  req <- c("chrom","start","end","copynumber")
+  miss <- setdiff(req, names(dt))
+  if (length(miss)) stop(sprintf("Missing columns in %s: %s", basename(f), paste(miss, collapse=", ")))
+  
+  keep <- intersect(c("chrom","start","end","copynumber","rd","baf"), names(dt))
+  dt <- dt[, ..keep]
+  setnames(dt, old = c("copynumber","rd","baf")[c("copynumber","rd","baf") %in% names(dt)],
+           new = c("CopyNumber","RD","BAF")[c("copynumber","rd","baf") %in% names(dt)])
+  
+  sid <- sub("\\.integrated\\.cnvs\\.txt$", "", basename(f), ignore.case = TRUE)
+  dt[, Sample_ID := sid]
+  dt[, chrom := to_ucsc(chrom)]
+  dt
+}
+
+merge_cn_segments_iter <- function(dt, max_gap = 30e6, min_size = 1e4, n_passes = 50) {
+  stopifnot(all(c("Sample_ID","chrom","start","end","CopyNumber") %in% names(dt)))
+  dt <- copy(dt)
+  setDT(dt)
+  
+  dt[, `:=`(start = as.integer(start), end = as.integer(end))]
+  dt[, width := end - start + 1L]
+  
+  if ("RD"  %in% names(dt))  dt[, `:=`(rd_num  = RD  * width, rd_den  = width)]
+  if ("BAF" %in% names(dt))  dt[, `:=`(baf_num = BAF * width, baf_den = width)]
+  if (!"n_merged" %in% names(dt)) dt[, n_merged := 1L]
+  
+  merge_once <- function(x, sid, chr, cn, max_gap) {
+    setorder(x, start, end)
+    x[, prev_end := shift(end, type = "lag")]
+    x[, gap := start - prev_end]
+    x[is.na(gap), gap := max_gap + 1L]
+    x[, grp := cumsum(gap > max_gap)]
+    
+    x[, .(
+      Sample_ID  = sid,
+      chrom      = chr,
+      CopyNumber = cn,
+      start      = min(start),
+      end        = max(end),
+      width      = max(end) - min(start) + 1L,
+      rd_num     = if ("rd_num"  %in% names(.SD)) sum(rd_num,  na.rm = TRUE) else NA_real_,
+      rd_den     = if ("rd_den"  %in% names(.SD)) sum(rd_den,  na.rm = TRUE) else NA_real_,
+      baf_num    = if ("baf_num" %in% names(.SD)) sum(baf_num, na.rm = TRUE) else NA_real_,
+      baf_den    = if ("baf_den" %in% names(.SD)) sum(baf_den, na.rm = TRUE) else NA_real_,
+      n_merged   = sum(n_merged, na.rm = TRUE)
+    ), by = grp][, grp := NULL][]
+  }
+  
+  for (k in seq_len(n_passes)) {
+    setorder(dt, Sample_ID, chrom, CopyNumber, start, end)
+    dt <- dt[, merge_once(copy(.SD), .BY$Sample_ID, .BY$chrom, .BY$CopyNumber, max_gap = max_gap),
+             by = .(Sample_ID, chrom, CopyNumber)]
+  }
+  
+  if (all(c("rd_num","rd_den") %in% names(dt)))  dt[, RD_mean  := fifelse(rd_den  > 0, rd_num  / rd_den,  NA_real_)]
+  if (all(c("baf_num","baf_den") %in% names(dt))) dt[, BAF_mean := fifelse(baf_den > 0, baf_num / baf_den, NA_real_)]
+  
+  drop_cols <- intersect(c("rd_num","rd_den","baf_num","baf_den","prev_end","gap"), names(dt))
+  if (length(drop_cols)) dt[, (drop_cols) := NULL]
+  
+  dt[width >= min_size][]
+}
+
+get_cytoband_range <- function(chr, start_pos, end_pos, cyto) {
+  cyto_chr <- cyto[chrom == chr]
+  band_start <- cyto_chr[start <= start_pos & end >= start_pos, band]
+  band_end   <- cyto_chr[start <= end_pos   & end >= end_pos, band]
+  band_start <- if (length(band_start)) band_start[1L] else NA_character_
+  band_end   <- if (length(band_end))   band_end[1L]   else NA_character_
+  if (is.na(band_start) || is.na(band_end)) return(NA_character_)
+  if (band_start == band_end) paste0(chr, band_start) else paste0(chr, band_start, "-", band_end)
+}
+
+# map textual CopyNumber category to code
+map_cn_to_code <- function(x) {
+  x <- tolower(as.character(x))
+  ifelse(grepl("\\b(gain|amp)\\b", x),  1L,
+         ifelse(grepl("\\b(loss|del)\\b", x), -1L,
+                ifelse(grepl("\\b(loh|cnn[-_ ]?loh|upd)\\b", x), 2L, 0L)))
+}
+
+# enforce matrix column order and add zeros for missing samples
+conform_to_subset <- function(mat, wanted_cols) {
+  keep <- intersect(wanted_cols, colnames(mat))
+  mat_sub <- if (length(keep)) mat[, keep, drop = FALSE] else
+    matrix(0L, nrow = nrow(mat), ncol = 0, dimnames = list(rownames(mat), NULL))
+  missing <- setdiff(wanted_cols, colnames(mat_sub))
+  if (length(missing)) {
+    add <- matrix(0L, nrow = nrow(mat_sub), ncol = length(missing),
+                  dimnames = list(rownames(mat_sub), missing))
+    mat_sub <- if (ncol(mat_sub) == 0L) add else cbind(mat_sub, add)
+  }
+  mat_sub[, wanted_cols, drop = FALSE]
+}
+
+# ----------------------------- LOAD CNVS --------------------------------------
+
+tsv_files <- list.files(input_dir, pattern = "\\.integrated\\.cnvs\\.txt$", full.names = TRUE, recursive = TRUE)
+# keep only those with "batch" and not "old"
+tsv_files <- tsv_files[grepl("batch", tsv_files) & !grepl("old", tsv_files)]
+
+# remove blacklisted / known-no-CNA samples
+sample_ids <- sub("\\.integrated\\.cnvs\\.txt$", "", basename(tsv_files))
+tsv_files <- tsv_files[!sample_ids %in% unique(c(blacklist, samples_with_no_cnas))]
+
+message(sprintf("Reading %d TSV files...", length(tsv_files)))
+if (!length(tsv_files)) stop("No input CNV files found after filtering.")
+
+cohort_dt <- rbindlist(lapply(tsv_files, read_one_cnv), use.names = TRUE, fill = TRUE)
+cohort_dt <- cohort_dt[chrom %in% std_chr & end > start]
+cohort_dt[, `:=`(start = as.numeric(start), end = as.numeric(end))]
+
+# ----------------------------- MERGE CNVS -------------------------------------
+
+merged_dt <- merge_cn_segments_iter(
+  cohort_dt,
+  max_gap = merge_max_gap,
+  min_size = merge_min_size,
+  n_passes = merge_passes
+)
+
+# ---------------------------- GROUP BY REGEX ----------------------------------
+# group by major patient prefixes (edit the patterns to your needs)
+group_patterns <- list(
+  group1 = "^P3G6|^PB11197",
+  group2 = "^PRN4|^PB08410",
+  group3 = "^P856|^PB14458",
+  group4 = "^PVA9",
+  group5 = "^PIA9",
+  group6 = "^PJBU"
+)
+
+group_list <- lapply(group_patterns, function(rx) merged_dt[grepl(rx, Sample_ID)])
+
+# -------------------------- CYTOBANDS (once) ----------------------------------
+
+cyto <- fread(cytoband_file, col.names = c("chrom", "start", "end", "band", "gieStain"))
+
+# -------------------- FIND SHARED EVENTS PER GROUP ----------------------------
+
+results_list <- list()
+
+for (nm in names(group_list)) {
+  dt <- copy(group_list[[nm]])[, .(Sample_ID, chrom, CopyNumber, start, end)]
+  if (!nrow(dt)) next
+  
+  dt[, `:=`(start = as.integer(start), end = as.integer(end), width = end - start + 1L, row_id = .I)]
+  setkey(dt, chrom, CopyNumber, start, end)
+  
+  # Self-overlap across *different* samples
+  ov <- foverlaps(dt, dt, type = "any", nomatch = 0L)[Sample_ID != i.Sample_ID]
+  if (!nrow(ov)) { message("No overlaps in ", nm); next }
+  
+  ov[, c("overlap_start","overlap_end") := .(pmax(start, i.start), pmin(end, i.end))]
+  ov[, ov_width := pmax(0L, overlap_end - overlap_start + 1L)]
+  ov[, recip_x := ov_width / (end - start + 1L)]
+  ov[, recip_y := ov_width / (i.end - i.start + 1L)]
+  ov <- ov[recip_x >= recip_overlap & recip_y >= recip_overlap]
+  if (!nrow(ov)) { message("No ≥", recip_overlap*100, "% shared CNVs in ", nm); next }
+  
+  g <- graph_from_data_frame(
+    unique(ov[, .(from = row_id, to = i.row_id)]),
+    directed = FALSE,
+    vertices = dt[, .(row_id, Sample_ID, chrom, CopyNumber, start, end)]
+  )
+  comp <- components(g)
+  dt[, comp_id := comp$membership[as.character(row_id)]]
+  
+  comp_samples <- dt[!is.na(comp_id),
+                     .(samples = list(sort(unique(Sample_ID))),
+                       n_samples = uniqueN(Sample_ID)),
+                     by = comp_id]
+  
+  keep_ids <- comp_samples[n_samples >= min_samples_shared, comp_id]
+  dt_filtered <- dt[comp_id %in% keep_ids]
+  if (!nrow(dt_filtered)) next
+  
+  comp_ranges <- dt_filtered[, .(
+    chrom      = unique(chrom)[1L],
+    CopyNumber = unique(CopyNumber)[1L],
+    min_start  = min(start),
+    max_end    = max(end),
+    width_bp   = max(end) - min(start) + 1L,
+    width_mb   = round((max(end) - min(start) + 1L) / 1e6, 2)
+  ), by = comp_id]
+  
+  comp_ranges <- comp_samples[comp_ranges, on = "comp_id"]
+  comp_ranges[, cytoband := mapply(get_cytoband_range, chrom, min_start, max_end, MoreArgs = list(cyto = cyto))]
+  
+  results_list[[nm]] <- comp_ranges[]
+}
+
+# ------------------ BUILD SIGNED MATRIX (Gain=+1, Loss=-1, LOH=2) --------------
+
+long_signed <- rbindlist(lapply(results_list, function(df) {
+  if (is.null(df) || !nrow(df)) return(NULL)
+  df[, .(cytoband, CopyNumber, Sample_ID = unlist(samples)), by = comp_id]
+}), fill = TRUE)
+
+if (is.null(long_signed) || !nrow(long_signed)) stop("No shared CNVs found across groups.")
+
+long_signed[, code := map_cn_to_code(CopyNumber)]
+
+# Collapse duplicates within (cytoband, Sample_ID) with priority Gain > Loss > LOH > None
+long_signed <- long_signed[
+  , .(code = if (any(code == 1L)) 1L
+      else if (any(code == -1L)) -1L
+      else if (any(code == 2L)) 2L
+      else 0L),
+  by = .(cytoband, Sample_ID)
+]
+
+wide_signed <- dcast(long_signed, cytoband ~ Sample_ID, value.var = "code",
+                     fun.aggregate = max, fill = 0)
+signed_mat_all <- as.matrix(wide_signed[, -1, with = FALSE])
+rownames(signed_mat_all) <- wide_signed$cytoband
+
+# --------------------------- PLOT PER COHORT ----------------------------------
+
+heat_colors  <- c("blue", "white", "red", "green")     # Loss, None, Gain, LOH
+heat_breaks  <- c(-1.5, -0.5, 0.5, 1.5, 2.5)
+
+for (set_name in names(sample_sets)) {
+  wanted  <- sample_sets[[set_name]]
+  mat_set <- conform_to_subset(signed_mat_all, wanted)
+  
+  present_rows <- rowSums(mat_set != 0) > 0
+  mat_set <- mat_set[present_rows, , drop = FALSE]
+  if (!nrow(mat_set)) {
+    message("No cytobands present for cohort ", set_name, " — skipping.")
+    next
+  }
+  
+  pdf_h <- max(hm_row_min, min(hm_row_max, nrow(mat_set) * hm_row_height))
+  
+  pheatmap::pheatmap(
+    mat_set,
+    cluster_rows = TRUE,
+    cluster_cols = FALSE,    # preserve given cohort order
+    color = heat_colors,
+    breaks = heat_breaks,
+    main = sprintf("CNV Gains/Losses/LOH – %s (all groups combined)", set_name),
+    fontsize = 8,
+    show_colnames = TRUE,
+    fontsize_col = 6,
+    angle_col = 90,
+    legend_labels = c("Loss", "None", "Gain", "LOH"),
+    filename = file.path(out_dir, sprintf("CNV_heatmap_%s_gains_losses_loh.pdf", set_name)),
+    width = hm_width, height = pdf_h
+  )
+  
+  out_df <- cbind(cytoband = rownames(mat_set), as.data.frame(mat_set, check.names = FALSE))
+  fwrite(out_df, file.path(out_dir, sprintf("CNV_matrix_%s_gains_losses_loh_present_only.csv", set_name)))
+}
+
+
+# export CNV 
+
+cnv_long <- wide_signed %>%
+  as_tibble() %>%
+  pivot_longer(
+    cols = -cytoband,
+    names_to = "sample",
+    values_to = "cnv"
+  ) %>%
+  filter(!is.na(cnv), cnv != 0) %>%                 # keep only CNV calls
+  mutate(cnv_call = case_when(
+    cnv > 0 ~ "gain",
+    cnv < 0 ~ "loss"
+  )) %>%
+  dplyr::select(sample, cytoband, cnv_call, cnv) %>%       # cnv is the signed value
+  arrange(sample, cytoband) %>%
+  distinct()
+
+
+write_xlsx(cnv_long, "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CNA/Data/cnv_by_sample_cytoband.xlsx")
+

@@ -14,6 +14,7 @@ library(ggtree)
 library(treeio)
 library(RColorBrewer)
 library(stringi)
+library(reshape2)
 library(stringdist)
 library(BSgenome.Hsapiens.NCBI.GRCh38)
 library(ggnewscale)
@@ -23,13 +24,14 @@ library(VariantAnnotation)
 library(ggplot2)
 library(dplyr)
 library(cellPhyWrapperPlotting) #devtools::install_local("~/surfdrive/Shared/pmc_vanboxtel/general/2_Bioinformatics/Scripts/cellPhyWrapperPlotting/",force = TRUE)
-source("~/surfdrive/Shared/pmc_vanboxtel/personal/asteemers/R_packages/plot_signature_contribution_new.R")
+source("~/surfdrive/Shared/pmc_vanboxtel/personal/asteemers/R_functions/plot_signature_contribution_alex.R")
+source("~/surfdrive/Shared/pmc_vanboxtel/personal/asteemers/R_functions/plot_gg_tree_alex.R")
 source('~/hpc/pmc_vanboxtel/projects/CHemALL/2_Code/PTATO/GeneralFunctions.R')
 source('~/hpc/pmc_vanboxtel/projects/CHemALL/2_Code/theme_CHemALL.R')
 theme_set(theme_classic())
 source("~/surfdrive/Shared/pmc_vanboxtel/general/2_Bioinformatics/colors/Jurrians_colors.R")
 
-# Load tree object, vcf used for tree building and bulk vcf
+# Load tree object
 
 tree = readRDS("~/hpc/pmc_vanboxtel/projects/Burkitt/3_Output/TreeBuilding_Alex/P3G6/Filtered_samples/CPW_04/TreeObject0.4.RDS")
 vcf = VariantAnnotation::readVcf("~/hpc/pmc_vanboxtel/projects/Burkitt/3_Output/TreeBuilding_Alex/P3G6/P3G6.vep.sub.SNV.autosomal.noBulksNoBlacklist.vcf")
@@ -39,24 +41,178 @@ vcf_bulk = VariantAnnotation::readVcf("~/hpc/pmc_vanboxtel/projects/Burkitt/1_In
 tree = prepare_tree(tree)
 
 # plot bare tree
-plot_gg_tree_base(tree)
-plot_gg_tree(tree, add_branch_length = TRUE, add_bootstrap = F, add_tip_label = F,add_title = "PRN4")
+p1 <- plot_gg_tree_base(tree)
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_absolute_tree_with_branch_info.pdf",
+  plot = p1,
+  width = 8,
+  height = 6
+)
+
+p2 <- plot_gg_tree(tree, add_branch_length = F, add_bootstrap = F, add_tip_label = F,add_title = "") +
+  geom_tree(color = "grey") +  # Set branch color to grey
+  scale_x_continuous(name = "Mutation burden (SNVs)",
+                     limits = c(0, 3200),
+                     breaks = seq(0, 3200, by = 200)) +
+  theme(
+    axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1, margin = margin(t = 6)),
+    axis.title.x = element_text(size = 12, angle = 180, vjust = 0.5, margin = margin(t = 6) )
+  )
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_absolute_tree.pdf",
+  plot = p2,
+  width = 8,
+  height = 6
+)
+
+p2b <- plot_gg_tree_alex(tree ,add_branch_length = F, add_bootstrap = T, add_tip_label = F,add_title = "", add_x = FALSE) +
+  geom_tree(color = "grey") +  # Set branch color to grey
+  scale_x_continuous(name = "Mutation burden (SNVs)",
+                     limits = c(0, 3200),
+                     breaks = seq(0, 3200, by = 200)) +
+  theme_tree2() +
+  theme(
+    axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1, margin = margin(t = 6)),
+    axis.title.x = element_text(size = 12, angle = 180, vjust = 0.5, margin = margin(t = 6) )
+  )
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_absolute_tree_with_bootstraps.pdf",
+  plot = p2b,
+  width = 8,
+  height = 6
+)
+
+# Define functions to make callable loci-corrected trees
+
+# Function to calculate the product of (1 - sensitivity) for each sample in a node
+calculate_product_sensitivity <- function(samples, df_sensitivity) {
+  # Split the 'samples' string by '|'
+  sample_list <- strsplit(samples, "\\|")[[1]]
+  
+  # Retrieve sensitivities for these samples
+  sensitivities <- df_sensitivity$sensitivity[df_sensitivity$Sample_name %in% sample_list]
+  
+  # Calculate the product of (1 - sensitivity)
+  1 - prod(1 - sensitivities)
+}
+
+# function to take a tree and correct the branch lengths based on the product sensitivity
+## by calculating the product of (1 - sensitivity) for each sample in a node
+# requires samples (=samples column from output of cellphywrapper object: tree@data$samples .
+# requires a CALLABLE df (=containing columns SAMPLES and CALLABLE (in nr of bases))
+
+correct_branches <- function(tree, callable_df){
+  # get sensitivity df by taking fraction of total possible callable loci
+  max_callable <- 2745186691
+  callable_df$sensitivity <- callable_df$Callable_Loci / max_callable
+  sensitivity_df <- callable_df[c('Sample_name','sensitivity')]
+  
+  print(sensitivity_df)
+  
+  # calculate the sensitivity per node/branch using the calculate_product_sensitivity function
+  tree@data$product_sensitivity <- sapply(tree@data$samples, calculate_product_sensitivity, sensitivity_df)
+  
+  # correct the branch lengths
+  tree@data$corr_branch_lengths <- tree@data$branch_length / tree@data$product_sensitivity
+  
+  print(tree@data$branch_length)
+  print(tree@data$corr_branch_lengths)
+  
+  tree@data$corr_branch_lengths[is.na(tree@data$corr_branch_lengths)] <- 0 # for merged germline sample
+  
+  # store also in the phylo object, required for downstream analyses based on the phylo object
+  tree@phylo$edge.length <- tree@data[order(tree@data$node),]$corr_branch_lengths
+  
+  # store in branch_length column for cellphyplotting use
+  tree@data$branch_length <- tree@data$corr_branch_lengths
+  
+  print(tree@phylo$edge.length)
+  
+  return(tree)
+}
+
+# Import callable loci and SBS PASS for donor
+
+input_df <-  read_excel('~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/1_Input/Sample_overview.xlsx') #dataframe
+input_df_P3G6 <- input_df[input_df$Novogene_ID == "P3G6" & input_df$ResolveDNA_version %in% c("v1", "v2.0", "v2"),]
+below_curve_df <-  read.csv("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/below_curve_samples.csv")
+low_call_frac_df <-  read.csv("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/low_callable_loci.csv")
+fail_vaf_df <-  read.csv("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/PTA_samples_failVAFcheck.txt")
+filtered_samples <- unique(c(low_call_frac_df$Sample_name, below_curve_df$Sample_name, fail_vaf_df$samplename))  # samples that didn't pass QC
+input_df_P3G6_filtered <- input_df_P3G6 %>% filter(!Sample_name %in% filtered_samples)
+input_df_P3G6_filtered$Callable_Loci <- as.numeric(input_df_P3G6_filtered$Callable_Loci)
+
+# Correct the branches
+corrected_tree <- correct_branches(tree, input_df_P3G6_filtered)
+corrected_tree@data$branch_length <- round(corrected_tree@data$branch_length)
+
+# Plot corrected tree
+
+p3 <- plot_gg_tree(corrected_tree, add_branch_length = F, add_bootstrap = F, add_tip_label = F,add_title = "") +
+  geom_tree(color = "grey") +  # Set branch color to grey
+  scale_x_continuous(name = "Mutation burden (SNVs)",
+                     limits = c(0, 3400),
+                     breaks = seq(0, 3400, by = 200)) +
+  theme(
+    axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1, margin = margin(t = 6)),
+    axis.title.x = element_text(size = 12, angle = 180, vjust = 0.5, margin = margin(t = 6) )
+  )
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_absolute_tree_corrected_for_callable_loci.pdf",
+  plot = p3,
+  width = 8,
+  height = 6
+)
+
+p3b <- plot_gg_tree_alex(corrected_tree ,add_branch_length = F, add_bootstrap = T, add_tip_label = F,add_title = "", add_x = FALSE) +
+  geom_tree(color = "grey") +  # Set branch color to grey
+  scale_x_continuous(name = "Mutation burden (SNVs)",
+                     limits = c(0, 3400),
+                     breaks = seq(0, 3400, by = 200)) +
+  theme_tree2() +
+  theme(
+    axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1, margin = margin(t = 6)),
+    axis.title.x = element_text(size = 12, angle = 180, vjust = 0.5, margin = margin(t = 6) )
+  )
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_absolute_tree_with_bootstraps_corrected_for_callable_loci.pdf",
+  plot = p3b,
+  width = 8,
+  height = 6
+)
+
+x <- as_tibble(corrected_tree)
+
+# 1. Get all non-NA tip labels
+tip_labels <- x$tip.label[!is.na(x$tip.label)]
+
+# 2. For each tip label, sum the branch lengths where it's mentioned in `samples`
+mutation_df <- tibble(TipLabel = tip_labels) %>%
+  rowwise() %>%
+  mutate(
+    TotalMutations = sum(
+      x$corr_branch_lengths[
+        str_detect(x$samples, stringr::fixed(TipLabel))
+      ],
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup()
+
 
 # VCF per branch
 branch_vcf = extract_vcf_per_branch(tree = tree, vcf = vcf, ref_genome = ref_genome)
 branch_grl = convert_vcf_to_granges(branch_vcf_list = branch_vcf, ref_genome = ref_genome)
 branch_mm = mut_matrix(branch_grl, ref_genome)
-
-# Step 1: save branch vcfs to manually check "odd" cells i.e. ones that branch off earlier than the major clone
-
-# In this case I wan to check branch h for PRN4GPDLBC17 and PRN4GPDLBC15 and branch e for PB08410-BLBM-BCELLP2G8
-# Specifically check for linked SNPs and badly covered regions
-
-lapply(c("h", "e"), function(name) {
-  filename <- file.path("~/hpc/pmc_vanboxtel/projects/Burkitt/3_Output/TreeBuilding_Alex/PRN4/Filtered_samples_v2/branch_vcfs_to_manually_check", paste0(name, "_branch.vcf"))
-  VariantAnnotation::writeVcf(branch_vcf[[name]], file = filename)
-})
-
 
 # Preprocess bulk samples
 
@@ -64,8 +220,9 @@ vcf_bulk_snvs <- vcf_bulk[isSNV(vcf_bulk)] # only SNVs
 autosomes <- as.character(1:22) 
 vcf_bulk_autosomal <- vcf_bulk_snvs[seqnames(rowRanges(vcf_bulk_snvs)) %in% autosomes] # only autosomes 
 vaf_matrix <- geno(vcf_bulk_autosomal)$VAF
+vaf_matrix <- vaf_matrix[, 1, drop = FALSE]  # keep as a matrix
 vaf_values <- as.numeric(vaf_matrix[, 1])
-vcf_bulk_filtered <- vcf_bulk_autosomal[vaf_values > 0.3] # filter on VAF (cutoff decided in previous script now called Mutational_load_VAF_cutoff)
+#vcf_bulk_filtered <- vcf_bulk_autosomal[vaf_values > 0.3] # filter on VAF (cutoff decided in previous script now called Mutational_load_VAF_cutoff)
 
 # Function to extract variant key
 
@@ -80,8 +237,8 @@ variant_key <- function(vcf) {
 
 # Get variant keys and VAFs for the bulk
 
-bulk_keys <- variant_key(vcf_bulk_filtered)
-bulk_vaf_matrix <- geno(vcf_bulk_filtered)$VAF
+bulk_keys <- variant_key(vcf_bulk_autosomal)
+bulk_vaf_matrix <- geno(vcf_bulk_autosomal)$VAF
 bulk_vafs <- as.numeric(bulk_vaf_matrix[, 1]) 
 
 # Create a named vector of VAFs for lookup
@@ -120,9 +277,10 @@ names(shared_stats) <- sapply(shared_stats, function(x) x$branch)
 
 # Example: plot VAF distributions per group
 
-group1 <- c("E3")
-group2 <- c("F3", "I3","J2","N","Y", "Z","W","I2", "H2","G2")
-group3 <- c("A", "G3", "H3", "X", "O", "P", "U", "R", "S", "K","L","B","H","F","C","D","a","b","c","d","i","f","g","D2","A2","B2","I","m","u","v","s","q","n","o")
+group1 <- c("Z")
+group2 <- c("T", "R", "Y", "X", "P")
+group3 <- c("J", "I", "H", "N", "M", "Q", "S", "W", "V", "U")
+group4 <- c("B", "A", "D", "F", "G", "a")
 
 # Helper to combine VAFs from a list of branch names
 get_vafs_for_group <- function(branch_names, stats_list) {
@@ -138,12 +296,14 @@ get_vafs_for_group <- function(branch_names, stats_list) {
 vafs_group1 <- get_vafs_for_group(group1, shared_stats)
 vafs_group2 <- get_vafs_for_group(group2, shared_stats)
 vafs_group3 <- get_vafs_for_group(group3, shared_stats)
+vafs_group4 <- get_vafs_for_group(group4, shared_stats)
 
 # Build one long data frame for ggplot
 plot_df <- rbind(
-  data.frame(VAF = vafs_group1, Group = "Trunk"),
-  data.frame(VAF = vafs_group2, Group = "Intermediate"),
-  data.frame(VAF = vafs_group3, Group = "Private")
+  data.frame(VAF = vafs_group1, Group = "BL-Trunk"),
+  data.frame(VAF = vafs_group2, Group = "BL-Intermediate"),
+  data.frame(VAF = vafs_group3, Group = "BL-Private")
+  #data.frame(VAF = vafs_group4, Group = "WT") # no mutations in bulk
 )
 
 tree_mut_counts <- data.frame(
@@ -164,112 +324,502 @@ get_shared_vs_total_stats <- function(branches, stats_list, tree_df) {
 }
 
 summary_stats <- rbind(
-  cbind(get_shared_vs_total_stats(group1, shared_stats, tree_mut_counts), Group = "Trunk"),
-  cbind(get_shared_vs_total_stats(group2, shared_stats, tree_mut_counts), Group = "Intermediate"),
-  cbind(get_shared_vs_total_stats(group3, shared_stats, tree_mut_counts), Group = "Private")
+  cbind(get_shared_vs_total_stats(group1, shared_stats, tree_mut_counts), Group = "BL-Trunk"),
+  cbind(get_shared_vs_total_stats(group2, shared_stats, tree_mut_counts), Group = "BL-Intermediate"),
+  cbind(get_shared_vs_total_stats(group3, shared_stats, tree_mut_counts), Group = "BL-Private"),
+  cbind(get_shared_vs_total_stats(group4, shared_stats, tree_mut_counts), Group = "WT")
 )
 
-plot_df$Group <- factor(plot_df$Group, levels = c("Trunk", "Intermediate", "Private"))
-summary_stats$Group <- factor(summary_stats$Group, levels = c("Trunk", "Intermediate", "Private"))
+plot_df$Group <- factor(plot_df$Group, levels = c("BL-Trunk", "BL-Intermediate", "BL-Private", "WT"))
+summary_stats$Group <- factor(summary_stats$Group, levels = c("BL-Trunk", "BL-Intermediate", "BL-Private", "WT"))
+
+group_cols <- c(
+  "BL-Trunk" = "#1D3557",
+  "BL-Intermediate" = "#0A9086",
+  "BL-Private" = "#A62639",
+  "WT" = "#D2BD96"
+)
 
 
-ggplot(plot_df, aes(x = VAF)) +
-  geom_histogram(bins = 20, fill = "steelblue", color = "white") +
+p4 <- ggplot(plot_df, aes(x = VAF)) +
+  geom_histogram(aes(fill = Group), bins = 10, color = "white") +
   facet_wrap(~Group, scales = "free_y") +
+  scale_fill_manual(values = group_cols) +
   coord_cartesian(xlim = c(0, 1)) +
   geom_text(
     data = summary_stats,
     aes(x = 0.8, y = Inf, label = Label),
     inherit.aes = FALSE,
-    vjust = 2, size = 4.5, fontface = "bold"
+    vjust = 2, size = 2.5, fontface = "bold"
   ) +
   theme_classic() +
-  labs(
-    title = "Bulk VAF Distributions of Shared Mutations",
-    x = "Bulk VAF",
-    y = "Count"
+  guides(fill = "none") +  # legend not needed since facets are labeled
+  labs(title = "Bulk VAF Distributions of Shared Mutations",
+       x = "Bulk VAF", y = "Count")
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_bulk_VAF_distribution_histogram.pdf",
+  plot = p4,
+  width = 8,
+  height = 6
+)
+
+p5 <- ggplot(plot_df, aes(y = VAF)) +
+  geom_violin(aes(x = 1, fill = Group), color = "white") +
+  facet_wrap(~ Group, scales = "free_y") +
+  scale_fill_manual(values = group_cols) +
+  coord_cartesian(ylim = c(0, 1)) +
+  geom_text(
+    data = summary_stats,
+    aes(x = Inf, y = Inf, hjust = 1.05, vjust = 1.4,label = Label),
+    inherit.aes = FALSE,
+    vjust = 2, size = 3, fontface = "bold"
+  ) +
+  scale_x_continuous(breaks = NULL) +
+  theme_classic() +
+  guides(fill = "none") +
+  labs(title = "Bulk VAF Distributions of Shared Mutations",
+       x = NULL, y = "Bulk VAF")
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_bulk_VAF_distribution_violin.pdf",
+  plot = p5,
+  width = 8,
+  height = 6
+)
+
+# Look within intermediate branches to see if the clade size matches median VAF 
+
+intermediate_list <- shared_stats[intersect(names(shared_stats), group2)]
+
+# Stack into a long data.frame, skipping branches with no shared_vafs
+dfs <- lapply(names(intermediate_list), function(b) {
+  vals <- intermediate_list[[b]]$shared_vafs
+  vals <- vals[!is.na(vals)]              # drop NAs
+  if (length(vals) == 0) return(NULL)     # skip empties
+  data.frame(
+    Branch = rep(b, length(vals)),
+    VAF    = vals,
+    stringsAsFactors = FALSE
   )
-tree = readRDS("~/hpc/pmc_vanboxtel/projects/Burkitt/3_Output/TreeBuilding_Markus/P3G6/CPW_01/TreeObject0.1.RDS")
-vcf = VariantAnnotation::readVcf("~/hpc/pmc_vanboxtel/projects/Burkitt/3_Output/TreeBuilding_Markus/P3G6/ptato_asap_woBCELLBULK.vcf.gz")
+})
 
-# prepare tree
-tree = prepare_tree(tree)
+intermediate_df <- do.call(rbind, dfs)
 
-# plot bare tree
-plot_gg_tree_base(tree)
-plot_gg_tree(tree, add_branch_length = TRUE, add_bootstrap = F, add_tip_label = F,add_title = "P3G6 | Ascites | 13.7Y")
-
-# VCF per branch
-branch_vcf = extract_vcf_per_branch(tree = tree, vcf = vcf, ref_genome = ref_genome)
-branch_grl = convert_vcf_to_granges(branch_vcf_list = branch_vcf, ref_genome = ref_genome)
-
-# Function to extract VAFs from a single VCF
-extract_vaf <- function(vcf_per_branch) {
-  AD_values <- vcf_per_branch@assays@data$AD  # Extract Allelic Depth
-  
-  # Convert AD to numeric matrix if it's a list
-  if (is.list(AD_values)) {
-    AD_values <- lapply(AD_values, function(x) {
-      if (is.null(x) || length(x) < 2 || !all(sapply(x, is.numeric))) {
-        return(NA)  # Handle missing or malformed values
-      }
-      return(as.numeric(x))  # Ensure numeric conversion
-    })
-    AD_values <- do.call(cbind, AD_values)  # Convert list to matrix
-  }
-  
-  # Ensure it's a numeric matrix and has at least two rows
-  if (!is.matrix(AD_values) || nrow(AD_values) < 2) {
-    return(NA)  # Return NA if the structure is invalid
-  }
-  
-  # Calculate VAF safely
-  vaf_values <- apply(AD_values, 2, function(x) {
-    if (length(x) < 2 || sum(x, na.rm = TRUE) == 0) {
-      return(NA)  # Avoid division by zero
-    }
-    return(as.numeric(x[2]) / sum(as.numeric(x), na.rm = TRUE))
-  })
-  
-  vaf_values <- vaf_values[!is.na(vaf_values) & vaf_values != 0.0]
+# In case all were empty:
+if (is.null(intermediate_df) || nrow(intermediate_df) == 0) {
+  stop("No shared VAFs found for the Intermediate branches in shared_stats.")
 }
 
-# profile per branch --> can be used for any MutationalPatterns analysis separate from the tree
-branch_mm = mut_matrix(branch_grl, ref_genome)
+p6 <- ggplot(intermediate_df %>% group_by(Branch) %>% mutate(nuniq = n_distinct(VAF)) %>% ungroup(), aes(x = 1, y = VAF)) +
+  geom_violin(data = ~ subset(.x, nuniq >= 2), fill = "#0A9086", color = "white", trim = FALSE) +
+  geom_point(data = ~ subset(.x, nuniq < 2), position = position_jitter(width = 0.04, height = 0), alpha = 0.6, size = 1) +
+  facet_wrap(~ Branch, scales = "free_y") +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_x_continuous(breaks = NULL) +
+  theme_classic() +
+  labs(title = "Intermediate branches: VAF distributions of shared mutations", x = NULL, y = "Bulk VAF")
 
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_bulk_VAF_distribution_intermediate_branches_violin.pdf",
+  plot = p6,
+  width = 8,
+  height = 6
+)
 
-### Get signatures 
-signatures = get_known_signatures()
-#pta_v1_sig = read.table("~/surfdrive - Alexander Steemers@surfdrive.surf.nl/Shared/pmc_vanboxtel/projects/Burkitt_lymphoma/1_Input/WGS/PTA_Artefact_Signature.txt", sep = "\t", header = T)
-#pta_v1_sig = as.matrix(pta_v1_sig)
-#PTA_v1 <- as.numeric(pta_v1_sig[,"PTA"])
-#PTA_v1 <- PTA_v1[!is.na(PTA_v1)]
-#pta_v2_sig = read.table("~/hpc/pmc_vanboxtel/resources/signatures/PTAv2_Artefact_Signature.txt", sep = "\t", header = T) 
-#pta_v2_sig = as.matrix(pta_v2_sig) 
-#PTA_v2 <- as.numeric(pta_v2_sig[,"PTAv2"])
-#hspc_sig = read.table("~/surfdrive - Alexander Steemers@surfdrive.surf.nl/Shared/pmc_vanboxtel/projects/Burkitt_lymphoma/1_Input/WGS/sigProfiler_SBS_working_signatures_incl_hspc.txt", sep = "\t", header = T)
-#hspc_sig = as.matrix(hspc_sig)
-#HSPC <- as.numeric(hspc_sig[,"HSPC"])
+# Plot signatures on tree
+
+# Get signatures 
+all_signatures = get_known_signatures()
+pta_v1_sig = read.table("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_lymphoma/1_Input/WGS/PTA_Artefact_Signature.txt", sep = "\t", header = T)
+pta_v1_sig = as.matrix(pta_v1_sig)
+PTA_v1 <- as.numeric(pta_v1_sig[,"PTA"])
+PTA_v1 <- PTA_v1[!is.na(PTA_v1)]
+pta_v2_sig = read.table("~/hpc/pmc_vanboxtel/resources/signatures/PTAv2_Artefact_Signature.txt", sep = "\t", header = T) 
+pta_v2_sig = as.matrix(pta_v2_sig) 
+PTA_v2 <- as.numeric(pta_v2_sig[,"PTAv2"])
 sbsblood <- read.table("~/Downloads/sigfit_cosmic3_bloodsig_Aug2020.txt", sep = "\t", header = T)
 sbsblood = as.matrix(sbsblood)
 SBSblood <- as.numeric(sbsblood[,"Signature.Blood"])
-signatures <- cbind(SBSblood, signatures)
+signatures <- cbind(SBSblood, all_signatures, PTA_v1, PTA_v2)
 
-### Refitting part 
-sub_sig <- signatures[, c("SBSblood", "SBS1", "SBS7a","SBS8", "SBS9", "SBS17b", "SBS18")] #signatures from Machado paper
-sub_sig <- signatures[, c("SBSblood", "SBS1","SBS8", "SBS9")] #signatures from Machado paper
+# Refitting part without PTA artefact signature 
 
-contribution <- fit_to_signatures_strict_tree(mut_matrix = branch_mm, signatures = sub_sig, max_delta = 0.01, remove_min = 20)
-contribution <- fit_to_signatures_strict_tree(mut_matrix = branch_mm, signatures = sub_sig, max_delta = 0.01, remove_min = 0)
-write.csv(contribution, "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_lymphoma/3_Output/CellPhy_mutationalpatterns/sbs_contr_per_branch_P3G6.csv", row.names = T)
-plot_contribution(contribution, palette = dist_cols50)
+sub_sig <- signatures[, c("SBS1", "SBS9", "SBS17b", "SBS18", "SBSblood")] # from de novo extraction
+
+contribution <- fit_to_signatures_strict_tree(mut_matrix = branch_mm, signatures = sub_sig, max_delta = 0.002, remove_min = 0)
+
+pal <- c("#D2BD96", "#0A9086", "#B3B3B3", "#A62639", "#1D3557", "#6C5B7B")
+names(pal) <- c("SBS1","SBS9","SBS17b","SBS18","SBSblood","PTA_v1")
+sig_cols <- pal[rownames(contribution)]
+
+plot_contribution(contribution, palette = pal)
 
 # check if all branches are explained well with these signatures: cosine < 0.85 with > 200 mutations would suggest you miss a mutation
-check_reconstructed_cosine(contribution, branch_mm, sub_sig, tree) +
+p7 <- check_reconstructed_cosine(contribution, branch_mm, sub_sig, tree) +
   ylim(0,1)
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_reconstructed_cosine_without_PTA.pdf",
+  plot = p7,
+  width = 8,
+  height = 6
+)
+
+# missing some signture(s) so will include PTA artifact signature
+
+sub_sig <- signatures[, c("SBS1", "SBS9", "SBS17b", "SBS18", "SBSblood", "PTA_v1")] 
+
+contribution <- fit_to_signatures_strict_tree(mut_matrix = branch_mm, signatures = sub_sig, max_delta = 0.002, remove_min = 0)
+
+plot_contribution(contribution, palette = pal)
+
+# check if all branches are explained well with these signatures: cosine < 0.85 with > 200 mutations would suggest you miss a mutation
+p8 <- check_reconstructed_cosine(contribution, branch_mm, sub_sig, tree) +
+  ylim(0,1)
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_reconstructed_cosine_with_PTA.pdf",
+  plot = p8,
+  width = 8,
+  height = 6
+)
+
+# all branches >200 mutations are above the 0.85 threshold so keep PTA signature
 
 # add signature contributions to your tree
 tree = add_contribution(tree, contribution = contribution) # if you already did signature_fitting
 
-# plot bars with all signatures in the branches of the tree
-plot_tree_contribution_bars_new(tree = tree, signatures = sub_sig, mut_matrix = branch_mm, title = "P3G6 | Ascites | 13.7Y") 
+p9 <- plot_tree_contribution_bars_new_alex(
+  tree = tree,
+  signatures = sub_sig,
+  mut_matrix = branch_mm,
+  signature_colors = sig_cols,
+  title = "P3G6",
+  bar_height = 0.02,
+  scaling = 0.8,
+  branch_color = "#000000",
+  x_limits = c(0, 3200),
+  x_breaks = seq(0, 3200, by = 200)
+)
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_signatures_in_tree_with_PTA.pdf",
+  plot = p9,
+  width = 8,
+  height = 6
+)
+
+# Convert the matrix to a data frame first
+contribution_df <- as.data.frame(contribution)
+
+# Get the column names of the data frame
+column_names <- colnames(contribution_df)
+
+# Assign groups based on column names
+group_assignment <- case_when(
+  column_names %in% group1 ~ "BL-Trunk",
+  column_names %in% group2 ~ "BL-Intermediate",
+  column_names %in% group3 ~ "BL-Private",
+  column_names %in% group4 ~ "WT"
+)
+
+# Add the group information to the data frame
+contribution_with_group <- data.frame(t(contribution_df), group = group_assignment)
+contribution_with_group <- contribution_with_group %>%
+  pivot_longer(cols = -group, names_to = "sample", values_to = "value")
+
+# Now, group by 'group' and summarise the contributions
+contribution_grouped <- contribution_with_group %>%
+  group_by(group, sample) %>%
+  summarise(total_contribution = sum(value, na.rm = TRUE), .groups = 'drop')
+
+# Pivot wider to have groups as columns and signatures (samples) as rows
+contribution_wide <- contribution_grouped %>%
+  pivot_wider(names_from = group, values_from = total_contribution, values_fill = list(total_contribution = 0))
+
+# Add BL
+contribution_wide <- contribution_wide |>
+  mutate(
+    BL_post_expansion = coalesce(`BL-Intermediate`, 0) + coalesce(`BL-Private`, 0)
+  )
+
+# Re-order
+
+contribution_wide <- contribution_wide |>
+  dplyr::select(sample, WT, BL_post_expansion, `BL-Trunk`, `BL-Intermediate`, `BL-Private`)
+
+# Convert the result into a matrix, using sample names as row names
+contribution_matrix <- as.matrix(contribution_wide %>% column_to_rownames("sample"))
+
+# View the resulting matrix
+contribution_matrix
+write.csv(contribution_matrix, "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Data/sbs_contr_per_group_P3G6.csv", row.names = T)
+
+p10 <- plot_contribution(contribution_matrix[,], palette = sig_cols) # All signatures including PTA
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_signatures_per_group_with_PTA.pdf",
+  plot = p10,
+  width = 8,
+  height = 6
+)
+
+p11 <- plot_contribution(contribution_matrix[2:6,], palette = sig_cols) # without PTA
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_signatures_per_group_without_PTA.pdf",
+  plot = p11,
+  width = 8,
+  height = 6
+)
+
+p11_sub <- plot_contribution(contribution_matrix[2:6,3:5], palette = sig_cols) # without PTA
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_signatures_per_group_without_PTA_sub.pdf",
+  plot = p11_sub,
+  width = 8,
+  height = 6
+)
+
+p11a_sub <- plot_contribution(contribution_matrix[2:6, c("BL-Trunk", "BL_post_expansion")], palette = sig_cols) # without PTA
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_signatures_pre_vs_post_expansion_without_PTA_sub.pdf",
+  plot = p11a_sub,
+  width = 8,
+  height = 6
+)
+
+# Convert to long format
+
+df_long <- melt(contribution_matrix[2:6,], varnames = c("Signature", "Sample"), value.name = "Contribution") %>%
+  group_by(Sample) %>%
+  mutate(Prop = Contribution / sum(Contribution)) %>%
+  ungroup()
+
+p11b <- ggplot(df_long, aes(x = Sample, y = Prop, fill = Signature)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = sig_cols) +
+  scale_y_continuous(limits = c(0, 1)) +     # y-axis from 0 to 1
+  labs(title = "Signature contribution per sample (no PTA)",
+       x = "",
+       y = "")
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_signatures_per_group_without_PTA_separate_bars.pdf",
+  plot = p11b,
+  width = 8,
+  height = 6
+)
+
+p11b_sub <- ggplot(transform(subset(df_long, Sample %in% c("BL-Trunk","BL-Intermediate","BL-Private")), Sample = factor(Sample, levels = c("BL-Trunk","BL-Intermediate","BL-Private"))), aes(x = Sample, y = Prop, fill = Signature)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = sig_cols) +
+  scale_y_continuous(limits = c(0, 1)) +     # y-axis from 0 to 1
+  labs(title = "Signature contribution per sample (no PTA)",
+       x = "",
+       y = "")
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_signatures_per_group_without_PTA_separate_bars_sub.pdf",
+  plot = p11b_sub,
+  width = 8,
+  height = 6
+)
+
+# Get relative proportion of C>TpG sites
+
+# To do that first need to correct branch_mm for PTAsigContribution
+
+pta_contri_df_wide <- as.data.frame(t(contribution_df["PTA_v1", , drop = FALSE]))
+colnames(pta_contri_df_wide) <- "PTA_v1"
+
+subtract_ptasig <- function(input_mutmat) {
+  
+  # get the absolute PTA contributions
+  pta_contris <- pta_contri_df_wide[colnames(input_mutmat),]
+  # reconstruct mutmat of PTA contribution
+  reconstructed_PTAmutmats <- as.matrix(PTA_v1) %*% as.matrix(t(pta_contris))
+  # subtract
+  output_mutmat <- input_mutmat - reconstructed_PTAmutmats
+  output_mutmat[output_mutmat < 0] <- 0 
+  
+  return(output_mutmat)
+}
+
+branch_mm_corrected <- subtract_ptasig(branch_mm)
+
+sample_groups <- c(
+  setNames(rep("BL-Trunk", length(group1)), group1),
+  setNames(rep("BL-Intermediate", length(group2)), group2),
+  setNames(rep("BL-Private", length(group3)), group3),
+  setNames(rep("WT", length(group4)), group4)
+)
+
+# Add merged BL group
+BL_samples <- c(group2, group3)
+sample_groups <- c(sample_groups, setNames(rep("BL", length(BL_samples)), BL_samples))
+
+# Subset matrix to only relevant samples
+
+branch_sel <- branch_mm_corrected[, names(sample_groups), drop = FALSE]
+
+# Sum counts per group
+
+branch_by_group <- rowsum(t(branch_sel), group = sample_groups)  # groups in rows
+branch_by_group <- t(branch_by_group)                            # groups as columns
+
+# Find CpG C>T channels
+
+ix_cpg_ct <- grepl("\\[C>T\\]G$", rownames(branch_by_group))
+
+# Compute proportions
+
+cpg_ct <- colSums(branch_by_group[ix_cpg_ct, , drop = FALSE])
+totals <- colSums(branch_by_group)
+prop <- cpg_ct / totals
+
+# Prepare data frame for plotting
+
+df <- data.frame(Group = names(prop), Proportion = as.numeric(prop))
+
+# Plot
+
+p11c <- ggplot(df, aes(x = Group, y = Proportion)) +
+  geom_col(fill = "#D2BD96") +
+  labs(
+    title = "Fraction of C>T at CpG sites per group",
+    x = "",
+    y = ""
+  ) +
+  ylim(0, 1)
+
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_CTpG_fraction_custom_groups.pdf",
+  plot = p11c,
+  width = 6,
+  height = 4.5
+)
+
+# remove PTA signature contribution and re-plot absolute tree 
+
+ggtree(tree@phylo)
+metadata <- tree@data
+print(metadata)
+x <- as_tibble(tree)
+phylo_tree <-as.phylo(x)
+x[18,] #this row contains NAs (node 15-to-15 connection)
+x<- x[-18,] #deleting NA-filled row
+phylo_tree$edge.length<-unname(x$branch_length)
+phylo_tree$edge
+print(phylo_tree)
+# Create the age dataframe
+agedf <- data.frame(
+  tip.label = metadata$tip.label,  # Must match tree$tip.label
+  age = rep(13.7,32)  # Replace these with your actual ages
+)
+phylo_tree$agedf<-agedf
+ggtree(phylo_tree)
+
+# read csv with signature per branch info
+sig_contri <- contribution
+sbs_minus_pta <- colSums(sig_contri[c("SBSblood", "SBS1", "SBS9", "SBS18", "SBS17b"), ])
+names(sbs_minus_pta) <- colnames(sig_contri)
+missing_branches <- setdiff(x$branch_id, names(sbs_minus_pta))
+sbs_minus_pta[missing_branches] <- 0
+x$branch_length_minus_PTA <- sbs_minus_pta[ x$branch_id ]
+x$branch_length_minus_PTA[is.na(x$branch_length_minus_PTA)] <- 0
+x$branch_length_minus_PTA <- as.integer(x$branch_length_minus_PTA)
+
+# Define the product sensitivity calculator
+calculate_product_sensitivity <- function(samples_str, sensitivity_df) {
+  sample_list <- strsplit(samples_str, "\\|")[[1]]
+  sensitivities <- sensitivity_df$Callable_fraction[sensitivity_df$Sample_name %in% sample_list]
+  if (length(sensitivities) == 0) return(1)  # fallback to avoid division by zero
+  return(1 - prod(1 - sensitivities, na.rm = TRUE))
+}
+
+x <- x %>%
+  mutate(product_sensitivity = sapply(samples, calculate_product_sensitivity, sensitivity_df = input_df_P3G6_filtered),
+         corr_branch_lengths = x$branch_length_minus_PTA / product_sensitivity)
+
+x <- x %>%
+  mutate(corr_branch_lengths = round(corr_branch_lengths))
+
+phylo_tree$edge.length<-unname(x$branch_length_minus_PTA)
+print(phylo_tree)
+# Create the age dataframe
+agedf <- data.frame(
+  tip.label = metadata$tip.label,  # Must match tree$tip.label
+  age = rep(13.8,32)  # Replace these with your actual ages
+)
+phylo_tree$agedf<-agedf
+ggtree(phylo_tree, )
+
+tree@data$branch_length <- x$corr_branch_lengths[ match(tree@data$branch_id, x$branch_id) ]
+
+
+# add signature contributions to your tree
+phylo_tree = add_contribution(tree, contribution = contribution[1:5,]) # if you already did signature_fitting
+
+p12 <- plot_tree_contribution_bars_new_alex(
+  tree = tree, contribution = contribution[1:5,], signature_colors = sig_cols,
+  title = "P3G6", bar_height = 0.02, scaling = 0.8, add_branch_length = F,
+  branch_color = "#000000",
+  x_limits = c(0, 3000),
+  x_breaks = seq(0, 3000, by = 200)
+)
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutationalPatterns/Figures/Trees/P3G6_signatures_in_tree_without_PTA_callable_loci_corrected.pdf",
+  plot = p12,
+  width = 8,
+  height = 6
+)
+
+# Plot final corrected tree
+
+# Merge the tree tip data with your annotation data
+tip_data <- input_df_P3G6 %>%
+  mutate(color_group = ifelse(Myc_translocation_IGV == "Yes", "#4378bd", "#e7872b"))
+
+p13 <- plot_gg_tree(tree,
+                    add_branch_length = FALSE,
+                    add_bootstrap = FALSE,
+                    add_tip_label = FALSE,
+                    add_title = "") %<+% tip_data +   # attach annotation to tree
+  geom_tree(color = "grey") +
+  geom_tippoint(aes(color = Myc_translocation_IGV), size = 3) +  # map color to Yes/No
+  scale_color_manual(values = c("Yes" = "#4378bd", "No" = "#e7872b")) +
+  scale_x_continuous(name = "Mutation burden (SNVs)",
+                     limits = c(0, 3000),
+                     breaks = seq(0, 3000, by = 200)) +
+  theme(
+    axis.text.x = element_text(size = 10, angle = 90,
+                               vjust = 0.5, hjust = 1, margin = margin(t = 6)),
+    axis.title.x = element_text(size = 12, angle = 180,
+                                vjust = 0.5, margin = margin(t = 6))
+  )
+
+# Save as PDF
+ggsave(
+  filename = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/CellPhy/Figures/P3G6_absolute_tree_without_PTA_corrected_for_callable_loci.pdf",
+  plot = p13,
+  width = 8,
+  height = 6
+)

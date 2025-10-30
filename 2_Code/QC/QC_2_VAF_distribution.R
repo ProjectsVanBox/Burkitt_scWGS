@@ -25,6 +25,7 @@ setwd("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC")
 # Load autosomal PASS variants above 0.15 VAF
 
 SBSs_PASS <- readRDS(file = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutLoad/Data/autosomal_PASS_variants_VAF015.RDS")
+INDELs_PASS <- readRDS(file = "~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/MutLoad/Data/autosomal_INDEL_PASS_variants_VAF015.RDS")
 
 # load metadata info
 
@@ -36,9 +37,9 @@ below_curve_df <-  read.csv("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_g
 low_call_frac_df <-  read.csv("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/low_callable_loci.csv")
 bad_baf_df <- read.csv("~/surfdrive/Shared/pmc_vanboxtel/projects/Burkitt_github/3_Output/QC/Data/bad_baf_samples.csv")
 
-# Generate initial blacklist sample (based on QC step 1) and filter those out
+# Generate initial blacklist sample (based on QC step 1) and remove remaining bad baf samples and filter those out
 
-blacklist_samples <- unique(c(below_curve_df$Sample, low_call_frac_df$Sample_name))
+blacklist_samples <- unique(c(below_curve_df$Sample, low_call_frac_df$Sample_name, bad_baf_df$Sample_name)) # filtering on bad baf as well here
 
 input_df_sc_filtered <- input_df_sc %>%
   filter(!Sample_name %in% blacklist_samples)
@@ -116,7 +117,7 @@ mad_val <- mad(tvd_df$TVD)
 median_val <- median(tvd_df$TVD)
 
 tvd_df <- tvd_df %>%
-  mutate(Flagged = TVD > (median_val + 3 * mad_val)) # https://www.sciencedirect.com/science/article/pii/S0022103113000668?via%3Dihub
+  mutate(Flagged = TVD > (median_val + 3.5 * mad_val)) # https://www.sciencedirect.com/science/article/pii/S0022103113000668?via%3Dihub
 
 # Plot TVD of VAF distributions
 
@@ -189,9 +190,12 @@ for (i in seq_along(plot_list)) {
 fail_df_pta <- unique(plot_df3b[plot_df3b$VAFfilter == 'Fail', c('samplename','Novogene_ID')])
 write_csv(fail_df_pta, '../QC/Data/PTA_samples_failVAFcheck.txt')
 
+other_filters <- unique(c(below_curve$Sample_name, low_call_frac_df$Sample_name, fail_df_pta$Sample_name))
+unique_to_bad_baf <- setdiff(bad_baf_df$Sample_name, other_filters)
+
 # Side analysis
 
-filtered_samples <- unique(c(low_call_frac_df$Sample_name, below_curve_df$Sample_name, fail_df_pta$samplename))  # samples that didn't pass QC
+filtered_samples <- unique(c(low_call_frac_df$Sample_name, below_curve_df$Sample_name, bad_baf_df$Sample_name, fail_df_pta$samplename))  # samples that didn't pass QC
 
 length(input_df_sc$Sample_name) - length(filtered_samples) # number of cells left after filtering steps 1 and 2 
 ((length(input_df_sc$Sample_name) - length(filtered_samples))/length(input_df_sc$Sample_name)) *100 # percentage of cells left
@@ -218,22 +222,48 @@ print(group_counts) # how many cells were removed because of QC steps
 
 sample_names <- as.character(input_df_sc$Sample_name)
 
-pb11197_p3g6 <- sample_names[grepl("^P3G6|^PB11197", sample_names)]
-pb08410_prn4 <- sample_names[grepl("^PB08410|^PRN4", sample_names)]
-pb14458_p856 <- sample_names[grepl("^PB14458|^P856", sample_names)]
-pia9         <- sample_names[grepl("^PIA9", sample_names)]
-pva9         <- sample_names[grepl("^PVA9", sample_names)]
-pjbu         <- sample_names[grepl("^PJBU", sample_names)]
+# Get all sample names
+all_samples <- unique(input_df_sc$Sample_name)
 
+# Get samples that passed QC
+kept_samples <- setdiff(all_samples, filtered_samples)
 
-group_counts <- data.frame(
+# Count kept samples per group
+pb11197_p3g6_kept <- kept_samples[grepl("^P3G6|^PB11197", kept_samples)]
+pb08410_prn4_kept <- kept_samples[grepl("^PB08410|^PRN4", kept_samples)]
+pb14458_p856_kept <- kept_samples[grepl("^PB14458|^P856", kept_samples)]
+pia9_kept         <- kept_samples[grepl("^PIA9", kept_samples)]
+pva9_kept         <- kept_samples[grepl("^PVA9", kept_samples)]
+pjbu_kept         <- kept_samples[grepl("^PJBU", kept_samples)]
+
+# Create a dataframe of counts
+group_counts_kept <- data.frame(
   Group = c("PB11197 / P3G6", "PB08410 / PRN4", "PB14458 / P856", "PIA9", "PVA9", "PJBU"),
-  Count = c(length(pb11197_p3g6),
-            length(pb08410_prn4),
-            length(pb14458_p856),
-            length(pia9),
-            length(pva9),
-            length(pjbu))
+  Kept = c(length(pb11197_p3g6_kept),
+           length(pb08410_prn4_kept),
+           length(pb14458_p856_kept),
+           length(pia9_kept),
+           length(pva9_kept),
+           length(pjbu_kept))
 )
 
-print(group_counts) # how many cells left for each patient
+print(group_counts_kept)
+
+median(group_counts_kept$Kept) 
+mean(group_counts_kept$Kept) 
+
+
+# Get some metadata now from the cells that passed all QC
+input_df_QC_pass <- input_df_sc %>% filter(!Sample_name %in% filtered_samples)
+input_df_QC_pass$Mean_coverage <- as.numeric(input_df_QC_pass$Mean_coverage) #make this numeric
+
+# Get mean genomes per patient (+ range)
+summary(input_df_QC_pass$Mean_coverage)
+
+# Get total autosomal SNVs and INDELS
+filtered_SBSs_PASS <- SBSs_PASS[!names(SBSs_PASS) %in% filtered_samples]
+print(sum(sapply(filtered_SBSs_PASS, length)))
+
+filtered_INDELs_PASS <- INDELs_PASS[!names(INDELs_PASS) %in% filtered_samples]
+print(sum(sapply(filtered_INDELs_PASS, length)))
+

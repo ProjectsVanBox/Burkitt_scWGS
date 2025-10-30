@@ -452,3 +452,29 @@ Heatmap(t(bcr_mat_receptors_only),
         split=c(rep("IgH", n_bcr_igh),
                 rep("IgK", n_bcr_igk)))
 dev.off()
+
+pdf("Figures/P856_MiXCR_BCR_heatmap.pdf_small.pdf", width = 3.5, height = 3.5)
+
+# Reduce default margins
+par(mar = c(2, 2, 2, 2))
+
+Heatmap(
+  t(bcr_mat_receptors_only),
+  na_col = "white",
+  col = col_discrete,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  show_column_names = TRUE,
+  column_names_gp = gpar(fontsize = 4, col = column_names_color),  # smaller column labels
+  row_names_gp = gpar(fontsize = 4),                                # smaller row labels
+  border = TRUE,
+  column_title = "P856 BCR recombinations",
+  column_title_gp = gpar(fontsize = 7),                            # slightly reduced title font
+  row_names_side = "right",
+  show_heatmap_legend = FALSE,
+  top_annotation = top_ha,
+  heatmap_width = unit(3, "in"),
+  heatmap_height = unit(3, "in")
+)
+
+dev.off()
