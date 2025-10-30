@@ -5,3 +5,11 @@
 *.RData
 ~
 *.pdf_small.pdf
+1_Input/
+4_Manuscript/
+.DS_Store
+**/.DS_Store
+*.Rhistory
+*.RData
+~
+*.pdf_small.pdf
