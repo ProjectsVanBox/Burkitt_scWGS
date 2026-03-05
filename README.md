@@ -14,26 +14,27 @@ Code and data for manuscript "Single-cell whole-genome sequencing reveals conver
 * Get clonal mutations from bulk samples (05_CFF_bulk.R)
 
 **02_MIXCR**
-* Plot B-cell receptor rearrangment (BCR) output from MiXCR
+* Plot B-cell receptor rearrangment (BCR) output from MiXCR 
   
 **03_CellPhy**
 * Plot phylogenetic tree output from CellPhy
   
 **04_Drivers**
-* Filter putative driver mutations and generate oncoplots for both bulk and single-cell samples
+* Filter putative driver mutations and generate oncoplots for both bulk and single-cell samples *(Fig 1b)*
   
 **05_MutationalTimeR**
 * Time copy number gains and copy-neutral loss of heterozygosity regions using MutationalTimeR
 
 **06_CNA**
-* Generate circosplot for bulk samples (Circosplot_bulk.R)
+* Generate circosplot for bulk samples (Circosplot_bulk.R) *(Fig 1d)*
 * Generate CNV plots for all single-cells (CNV_heatmap.R)
-* Generate general
+* Get CNV information for bulk samples (CNV_analysis_bulk.R)
+* Get CNV information for single-cell samples (CNV_analysis_single_cells.R)
 
 **07_dNdS**
-* Perform dN/dS analysis in bulk samples (dNdS_ratio_bulks.R)
-* Perform dN/dS analysis in single-cell data (dNdS_ratio.R)
-* Perform transcriptional strand bias analysis (TCR_analysis.R)
+* Perform dN/dS analysis in bulk samples (dNdS_ratio_bulks.R) *(Fig 1c)*
+* Perform dN/dS analysis in single-cell data (dNdS_ratio.R) *(Fig 3b)*
+* Perform transcriptional strand bias analysis (TCR_analysis.R) 
 
 **08_MutSigs**
 * Perform mutational patterns using own data + publicly available data from Machado et. al 2020 and PCAWG (MutationalPatterns_PMC_Machado_pcawg.R)
@@ -41,7 +42,7 @@ Code and data for manuscript "Single-cell whole-genome sequencing reveals conver
 * Compare mutational signatures between normal and tumour cells (wt_pre_post_comparison.R)
   
 **09_OEratio**
-* Plot the observed vs expected mutational load in different cell types by taking into account all SBS mutations (OE_ratio.R)
+* Plot the observed vs expected mutational load in different cell types by taking into account all SBS mutations (OE_ratio.R) *(Fig 3a)
 * Plot the observed vs expected mutational load in different cell types by taking into account only SBS1 and SBSblood mutations (OE_ratio_SBS1_SBSblood.R)
 
 **10_Rtreefit**
