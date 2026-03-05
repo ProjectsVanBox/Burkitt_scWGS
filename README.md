@@ -1,13 +1,13 @@
 # Burkitt_scWGS
 Code and data for manuscript "Single-cell whole-genome sequencing reveals convergent evolution in Burkitt lymphoma"
 
-## Notes:
+## Notes
 1) Raw sequencing data can be obtained from EGA (EGASXXXXXXXXXX)
 2) Processed data (including PTATO-filtered vcf files) can be obtained from Mendeley (Steemers, Alexander (2026), “Single-cell whole-genome sequencing reveals convergent evolution in Burkitt lymphoma”, DOI: 10.17632/phk5jhhm7d.1)
 3) Supporting files needed in scripts can be found under Data
 4) Supporting functions needed in script can be found under Functions
 
-### Code structure:
+### Code structure
 **01_Preprocessing**
 * Obtain the SBS and INDEL mutational load (01_MutLoad_sc_SBS.R & 02_MutLoad_sc_INDELS.R)
 * Perform QC steps to remove low quality samples (03_QC_step1.R & 04_QC_step2.R) *(Supp. Fig. 14a-c,e)*
