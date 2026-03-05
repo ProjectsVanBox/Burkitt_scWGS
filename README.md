@@ -17,7 +17,7 @@ Code and data for manuscript "Single-cell whole-genome sequencing reveals conver
 * Plot B-cell receptor rearrangment (BCR) output from MiXCR 
   
 **03_CellPhy**
-* Plot phylogenetic tree output from CellPhy
+* Plot phylogenetic tree output from CellPhy *(Fig 2, Fig 4a,b)*
   
 **04_Drivers**
 * Filter putative driver mutations and generate oncoplots for both bulk and single-cell samples *(Fig 1b)*
@@ -39,15 +39,15 @@ Code and data for manuscript "Single-cell whole-genome sequencing reveals conver
 **08_MutSigs**
 * Perform mutational patterns using own data + publicly available data from Machado et. al 2020 and PCAWG (MutationalPatterns_PMC_Machado_pcawg.R)
 * Assign probability of mutational signature causing a driver mutation (SigProb.R)
-* Compare mutational signatures between normal and tumour cells (wt_pre_post_comparison.R)
+* Compare mutational signatures between normal and tumour cells (wt_pre_post_comparison.R) *(Fig 4c)*
   
 **09_OEratio**
 * Plot the observed vs expected mutational load in different cell types by taking into account all SBS mutations (OE_ratio.R) *(Fig 3a)
-* Plot the observed vs expected mutational load in different cell types by taking into account only SBS1 and SBSblood mutations (OE_ratio_SBS1_SBSblood.R)
+* Plot the observed vs expected mutational load in different cell types by taking into account only SBS1 and SBSblood mutations (OE_ratio_SBS1_SBSblood.R) *(Fig. 5b)*
 
 **10_Rtreefit**
-* Generate ultrametric trees for all 6 single-cell patients
-* Generate correlations plots between latency and age as well as latency and mutational rate (Correlations.R)
+* Generate ultrametric trees for all 6 single-cell patients *(Fig 5c)*
+* Generate correlations plots between latency and age as well as latency and mutational rate (Correlations.R) *(Fig 5d,e)*
 
 
 
