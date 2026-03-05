@@ -1,9 +1,54 @@
 # Burkitt_scWGS
 Code and data for manuscript "Single-cell whole-genome sequencing reveals convergent evolution in Burkitt lymphoma"
 
-Notes:
-1) Raw sequencing data can be obtained from EGA 
-2) Processed data (including PTATO-filtered vcf files)can be obtained from Mendeley (Steemers, Alexander (2026), “Single-cell whole-genome sequencing reveals convergent evolution in Burkitt lymphoma”, DOI: 10.17632/phk5jhhm7d.1)
+## Notes:
+1) Raw sequencing data can be obtained from EGA (EGASXXXXXXXXXX)
+2) Processed data (including PTATO-filtered vcf files) can be obtained from Mendeley (Steemers, Alexander (2026), “Single-cell whole-genome sequencing reveals convergent evolution in Burkitt lymphoma”, DOI: 10.17632/phk5jhhm7d.1)
+3) Supporting files needed in scripts can be found under Data
+4) Supporting functions needed in script can be found under Functions
 
-Code structure:
+### Code structure:
+**01_Preprocessing**
+* Obtain the SBS and INDEL mutational load (01_MutLoad_sc_SBS.R & 02_MutLoad_sc_INDELS.R)
+* Perform QC steps to remove low quality samples (03_QC_step1.R & 04_QC_step2.R)
+* Get clonal mutations from bulk samples (05_CFF_bulk.R)
+
+**02_MIXCR**
+* Plot B-cell receptor rearrangment (BCR) output from MiXCR
+  
+**03_CellPhy**
+* Plot phylogenetic tree output from CellPhy
+  
+**04_Drivers**
+* Filter putative driver mutations and generate oncoplots for both bulk and single-cell samples
+  
+**05_MutationalTimeR**
+* Time copy number gains and copy-neutral loss of heterozygosity regions using MutationalTimeR
+
+**06_CNA**
+* Generate circosplot for bulk samples (Circosplot_bulk.R)
+* Generate CNV plots for all single-cells (CNV_heatmap.R)
+* Generate general
+
+**07_dNdS**
+* Perform dN/dS analysis in bulk samples (dNdS_ratio_bulks.R)
+* Perform dN/dS analysis in single-cell data (dNdS_ratio.R)
+* Perform transcriptional strand bias analysis (TCR_analysis.R)
+
+**08_MutSigs**
+* Perform mutational patterns using own data + publicly available data from Machado et. al 2020 and PCAWG (MutationalPatterns_PMC_Machado_pcawg.R)
+* Assign probability of mutational signature causing a driver mutation (SigProb.R)
+* Compare mutational signatures between normal and tumour cells (wt_pre_post_comparison.R)
+  
+**09_OEratio**
+* Plot the observed vs expected mutational load in different cell types by taking into account all SBS mutations (OE_ratio.R)
+* Plot the observed vs expected mutational load in different cell types by taking into account only SBS1 and SBSblood mutations (OE_ratio_SBS1_SBSblood.R)
+
+**10_Rtreefit**
+* Generate ultrametric trees for all 6 single-cell patients
+* Generate correlations plots between latency and age as well as latency and mutational rate (Correlations.R)
+
+
+
+
 
