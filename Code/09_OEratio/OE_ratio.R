@@ -90,7 +90,7 @@ merged_df$SNV_per_callable <- merged_df$SNV_count / merged_df$Callable_fraction
 
 filtered_df <- merged_df[, c("Sample_name", "Age_at_sampling_Y", "SNV_per_callable", "Myc_translocation_IGV", "Biopsy_type" )]
 
-sbs9_status_df <- read.csv("Data/Normal_SBS9_status_table.csv", stringsAsFactors =  F)
+sbs9_status_df <- read.csv("Normal_SBS9_status_table.csv", stringsAsFactors =  F) # generated after runningwt_pre_post_comparison.R
 
 final_df <- merge(filtered_df, sbs9_status_df, by = "Sample_name", all.x = TRUE)
 final_df <- final_df[!is.na(final_df$SNV_per_callable), ]
