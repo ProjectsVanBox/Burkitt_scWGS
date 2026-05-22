@@ -1,4 +1,4 @@
-q#!/bin/bash
+#!/bin/bash
 
 #SBATCH -t 2:0:0
 #SBATCH --mem=25G
